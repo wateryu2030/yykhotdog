@@ -1,0 +1,1150 @@
+import { Request, Response } from 'express';
+import { sequelize } from '../config/database';
+import { logger } from '../utils/logger';
+
+// 同步状态管理
+interface SyncStatus {
+  isRunning: boolean;
+  progress: number;
+  currentStep: string;
+  totalSteps: number;
+  startTime?: Date;
+  endTime?: Date;
+  error?: string;
+  result?: {
+    totalCustomers: number;
+    totalOrders: number;
+    totalSpend: number;
+  };
+}
+
+let syncStatus: SyncStatus = {
+  isRunning: false,
+  progress: 0,
+  currentStep: '',
+  totalSteps: 5
+};
+
+// 获取同步状态
+export const getSyncStatus = (): SyncStatus => {
+  return { ...syncStatus };
+};
+
+// 重置同步状态
+const resetSyncStatus = () => {
+  syncStatus = {
+    isRunning: false,
+    progress: 0,
+    currentStep: '',
+    totalSteps: 5
+  };
+};
+
+// 更新同步状态
+const updateSyncStatus = (updates: Partial<SyncStatus>) => {
+  syncStatus = { ...syncStatus, ...updates };
+  logger.info(`同步状态更新: ${updates.currentStep || ''} - 进度: ${updates.progress || syncStatus.progress}%`);
+};
+
+// 异步同步客户画像数据
+export const syncCustomerProfilesAsync = async (): Promise<void> => {
+  if (syncStatus.isRunning) {
+    throw new Error('同步已在进行中，请稍后再试');
+  }
+
+  try {
+    resetSyncStatus();
+    updateSyncStatus({
+      isRunning: true,
+      startTime: new Date(),
+      currentStep: '开始同步客户画像数据...',
+      progress: 0
+    });
+
+    // 步骤1: 创建客户画像表
+    updateSyncStatus({
+      currentStep: '创建客户画像表...',
+      progress: 20
+    });
+
+    await createCustomerProfileTables();
+
+    // 步骤2: 同步客户基础数据
+    updateSyncStatus({
+      currentStep: '同步客户基础数据...',
+      progress: 40
+    });
+
+    const customerResult = await syncCustomerBasicData();
+
+    // 步骤3: 同步客户订单数据
+    updateSyncStatus({
+      currentStep: '同步客户订单数据...',
+      progress: 60
+    });
+
+    const orderResult = await syncCustomerOrderData();
+
+    // 步骤4: 生成客户分析数据
+    updateSyncStatus({
+      currentStep: '生成客户分析数据...',
+      progress: 80
+    });
+
+    await generateCustomerAnalysisData();
+
+    // 步骤5: 完成同步
+    updateSyncStatus({
+      currentStep: '同步完成',
+      progress: 100,
+      isRunning: false,
+      endTime: new Date(),
+      result: {
+        totalCustomers: customerResult.totalCustomers,
+        totalOrders: orderResult.totalOrders,
+        totalSpend: orderResult.totalSpend
+      }
+    });
+
+    logger.info('客户画像数据同步完成');
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
+    logger.error('同步客户画像数据失败:', errorMessage);
+    updateSyncStatus({
+      isRunning: false,
+      error: errorMessage,
+      currentStep: `同步失败: ${errorMessage}`,
+      endTime: new Date()
+    });
+    throw new Error(`同步客户画像数据失败: ${errorMessage}`);
+  }
+};
+
+// 创建客户画像表
+const createCustomerProfileTables = async (): Promise<void> => {
+  try {
+    logger.info('开始创建客户画像表...');
+    
+    // 检查表是否已存在
+    const [existingTables] = await sequelize.query(`
+      SELECT TABLE_NAME 
+      FROM INFORMATION_SCHEMA.TABLES 
+      WHERE TABLE_NAME IN ('customer_profiles', 'customer_orders', 'customer_analysis')
+    `);
+    
+    const existingTableNames = (existingTables as any[]).map(t => t.TABLE_NAME);
+    logger.info(`已存在的表: ${existingTableNames.join(', ')}`);
+    
+    // 如果所有表都已存在，直接返回
+    if (existingTableNames.length >= 3) {
+      logger.info('所有客户画像表已存在，跳过创建');
+      return;
+    }
+    
+    // 创建客户画像表
+    if (!existingTableNames.includes('customer_profiles')) {
+      await sequelize.query(`
+        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='customer_profiles' AND xtype='U')
+        BEGIN
+          CREATE TABLE customer_profiles (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            customer_id VARCHAR(100) NOT NULL,
+            open_id VARCHAR(100),
+            vip_num VARCHAR(50),
+            phone VARCHAR(20),
+            nickname NVARCHAR(100),
+            gender VARCHAR(10),
+            city NVARCHAR(50),
+            district NVARCHAR(50),
+            first_order_date DATE,
+            last_order_date DATE,
+            total_orders INT DEFAULT 0,
+            total_spend DECIMAL(10,2) DEFAULT 0,
+            avg_order_amount DECIMAL(10,2) DEFAULT 0,
+            customer_segment VARCHAR(50),
+            created_at DATETIME DEFAULT GETDATE(),
+            updated_at DATETIME DEFAULT GETDATE()
+          )
+        END
+      `);
+      logger.info('customer_profiles表创建成功');
+    }
+
+    // 创建客户订单表
+    if (!existingTableNames.includes('customer_orders')) {
+      await sequelize.query(`
+        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='customer_orders' AND xtype='U')
+        BEGIN
+          CREATE TABLE customer_orders (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            customer_id VARCHAR(100) NOT NULL,
+            order_id INT NOT NULL,
+            order_no VARCHAR(50),
+            order_date DATETIME,
+            total_amount DECIMAL(10,2),
+            pay_state INT,
+            shop_id INT,
+            created_at DATETIME DEFAULT GETDATE()
+          )
+        END
+      `);
+      logger.info('customer_orders表创建成功');
+    }
+
+    // 创建客户分析表
+    if (!existingTableNames.includes('customer_analysis')) {
+      await sequelize.query(`
+        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='customer_analysis' AND xtype='U')
+        BEGIN
+          CREATE TABLE customer_analysis (
+            id INT IDENTITY(1,1) PRIMARY KEY,
+            customer_id VARCHAR(100) NOT NULL,
+            analysis_type VARCHAR(50),
+            analysis_data NVARCHAR(MAX),
+            created_at DATETIME DEFAULT GETDATE()
+          )
+        END
+      `);
+      logger.info('customer_analysis表创建成功');
+    }
+
+    // 验证表是否创建成功
+    const [tables] = await sequelize.query(`
+      SELECT TABLE_NAME 
+      FROM INFORMATION_SCHEMA.TABLES 
+      WHERE TABLE_NAME IN ('customer_profiles', 'customer_orders', 'customer_analysis')
+    `);
+    
+    const tableNames = (tables as any[]).map(t => t.TABLE_NAME);
+    logger.info(`客户画像表创建完成，已创建的表: ${tableNames.join(', ')}`);
+    
+    if (tableNames.length < 3) {
+      throw new Error(`表创建不完整，期望3个表，实际创建了${tableNames.length}个表`);
+    }
+  } catch (error) {
+    logger.error('创建客户画像表失败:', error);
+    throw new Error(`创建客户画像表失败: ${error.message}`);
+  }
+};
+
+// 创建客户画像表（公共方法）
+export const createTables = async (): Promise<void> => {
+  return createCustomerProfileTables();
+};
+
+// 同步客户基础数据
+const syncCustomerBasicData = async (): Promise<{totalCustomers: number}> => {
+  try {
+    logger.info('开始同步客户基础数据...');
+    
+    // 检查表是否存在 - 修复查询逻辑
+    const [tableCheckResult] = await sequelize.query(`
+      SELECT COUNT(*) as count
+      FROM INFORMATION_SCHEMA.TABLES 
+      WHERE TABLE_NAME = 'customer_profiles'
+    `);
+    
+    const tableExists = (tableCheckResult as any[])[0]?.count > 0;
+    logger.info(`表检查结果: customer_profiles表${tableExists ? '存在' : '不存在'}`);
+    
+    if (!tableExists) {
+      throw new Error('customer_profiles表不存在，请先创建表');
+    }
+    
+    // 清空现有数据
+    await sequelize.query('DELETE FROM customer_profiles');
+    logger.info('已清空现有客户数据');
+
+    // 查询客户基础数据（排除异常数据，添加去重逻辑）
+    const customerQuery = `
+      SELECT DISTINCT
+        o.openId as customer_id,
+        o.openId as open_id,
+        CAST(o.vipId AS VARCHAR(50)) as vip_num,
+        o.tel as phone,
+        NULL as nickname,
+        NULL as gender,
+        o.shopName as city,
+        NULL as district,
+        MIN(o.recordTime) as first_order_date,
+        MAX(o.recordTime) as last_order_date,
+        COUNT(*) as total_orders,
+        SUM(o.total) as total_spend,
+        AVG(o.total) as avg_order_amount
+      FROM cargo.dbo.Orders o
+      WHERE o.openId IS NOT NULL 
+        AND o.openId != ''
+        AND o.openId NOT LIKE '%test%'
+        AND o.openId NOT LIKE '%测试%'
+        AND o.total > 0
+        AND o.total < 100000  -- 提高异常金额阈值
+        AND o.recordTime IS NOT NULL
+      GROUP BY o.openId, o.vipId, o.tel, o.shopName
+      HAVING COUNT(*) > 0
+        AND SUM(o.total) < 100000  -- 提高总消费金额限制
+        AND AVG(o.total) < 1000    -- 提高平均订单金额限制
+      ORDER BY total_orders DESC
+    `;
+
+    logger.info('开始查询客户数据...');
+    
+    const [customers] = await sequelize.query(customerQuery);
+    const customerList = customers as any[];
+    logger.info(`查询到 ${customerList.length} 个客户数据`);
+
+    if (customerList.length === 0) {
+      logger.warn('没有查询到任何客户数据，可能查询条件过于严格');
+      return { totalCustomers: 0 };
+    }
+
+    // 进一步去重，确保openId唯一
+    const uniqueCustomers = customerList.reduce((acc, customer) => {
+      if (!acc.find(c => c.customer_id === customer.customer_id)) {
+        acc.push(customer);
+      }
+      return acc;
+    }, []);
+
+    logger.info(`去重后剩余 ${uniqueCustomers.length} 个唯一客户`);
+
+    // 批量插入客户数据
+    let insertedCount = 0;
+    for (const customer of uniqueCustomers) {
+      try {
+        const customerSegment = getCustomerSegment(customer.total_orders, customer.total_spend);
+        
+        await sequelize.query(`
+          INSERT INTO customer_profiles (
+            customer_id, open_id, vip_num, phone, nickname, gender, city, district,
+            first_order_date, last_order_date, total_orders, total_spend, 
+            avg_order_amount, customer_segment
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, {
+          replacements: [
+            customer.customer_id,
+            customer.open_id,
+            customer.vip_num,
+            customer.phone,
+            customer.nickname,
+            customer.gender,
+            customer.city,
+            customer.district,
+            customer.first_order_date,
+            customer.last_order_date,
+            customer.total_orders,
+            customer.total_spend,
+            customer.avg_order_amount,
+            customerSegment
+          ]
+        });
+        insertedCount++;
+        
+        if (insertedCount % 100 === 0) {
+          logger.info(`已插入 ${insertedCount} 个客户数据`);
+        }
+      } catch (insertError) {
+        logger.error(`插入客户数据失败 (${customer.customer_id}):`, insertError);
+        // 继续处理其他客户
+      }
+    }
+
+    logger.info(`同步客户基础数据完成，共处理 ${uniqueCustomers.length} 个客户，成功插入 ${insertedCount} 个`);
+    return { totalCustomers: insertedCount };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : '未知错误';
+    logger.error('同步客户基础数据失败:', errorMessage);
+    logger.error('错误详情:', error);
+    throw new Error(`同步客户基础数据失败: ${errorMessage}`);
+  }
+};
+
+// 同步客户订单数据
+const syncCustomerOrderData = async (): Promise<{totalOrders: number, totalSpend: number}> => {
+  try {
+    // 清空现有订单数据
+    await sequelize.query('DELETE FROM customer_orders');
+
+    // 查询客户订单数据
+    const orderQuery = `
+      SELECT 
+        COALESCE(o.openId, CONCAT('CUST_', o.id)) as customer_id,
+        o.id as order_id,
+        o.orderNo as order_no,
+        o.recordTime as order_date,
+        o.total as total_amount,
+        o.payState as pay_state,
+        o.shopId as shop_id
+      FROM cargo.dbo.Orders o
+      WHERE o.openId IS NOT NULL 
+        AND o.openId != ''
+        AND o.total > 0
+        AND o.total < 10000
+      ORDER BY o.recordTime DESC
+    `;
+
+    const [orders] = await sequelize.query(orderQuery);
+    const orderList = orders as any[];
+
+    // 批量插入订单数据
+    for (const order of orderList) {
+      await sequelize.query(`
+        INSERT INTO customer_orders (
+          customer_id, order_id, order_no, order_date, total_amount, pay_state, shop_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, {
+        replacements: [
+          order.customer_id,
+          order.order_id,
+          order.order_no,
+          order.order_date,
+          order.total_amount,
+          order.pay_state,
+          order.shop_id
+        ]
+      });
+    }
+
+    const totalSpend = orderList.reduce((sum, order) => sum + (order.total_amount || 0), 0);
+    logger.info(`同步客户订单数据完成，共处理 ${orderList.length} 个订单，总金额 ${totalSpend}`);
+    return { totalOrders: orderList.length, totalSpend };
+  } catch (error) {
+    logger.error('同步客户订单数据失败:', error);
+    throw error;
+  }
+};
+
+// 生成客户分析数据
+const generateCustomerAnalysisData = async (): Promise<void> => {
+  try {
+    // 清空现有分析数据
+    await sequelize.query('DELETE FROM customer_analysis');
+
+    // 生成客户分群分析
+    const segmentQuery = `
+      SELECT 
+        customer_segment,
+        COUNT(*) as count,
+        AVG(total_spend) as avg_spend,
+        AVG(total_orders) as avg_orders
+      FROM customer_profiles
+      GROUP BY customer_segment
+      ORDER BY avg_spend DESC
+    `;
+
+    const [segments] = await sequelize.query(segmentQuery);
+    
+    // 存储分群分析数据
+    for (const segment of segments as any[]) {
+      await sequelize.query(`
+        INSERT INTO customer_analysis (customer_id, analysis_type, analysis_data)
+        VALUES (?, ?, ?)
+      `, {
+        replacements: [
+          'ALL',
+          'customer_segment',
+          JSON.stringify(segment)
+        ]
+      });
+    }
+
+    // 生成时间分布分析
+    const timeQuery = `
+      SELECT 
+        DATEPART(HOUR, order_date) as hour,
+        COUNT(*) as order_count,
+        SUM(total_amount) as total_amount
+      FROM customer_orders
+      GROUP BY DATEPART(HOUR, order_date)
+      ORDER BY hour
+    `;
+
+    const [timeData] = await sequelize.query(timeQuery);
+    
+    await sequelize.query(`
+      INSERT INTO customer_analysis (customer_id, analysis_type, analysis_data)
+      VALUES (?, ?, ?)
+    `, {
+      replacements: [
+        'ALL',
+        'time_distribution',
+        JSON.stringify(timeData)
+      ]
+    });
+
+    // 生成产品偏好分析
+    const productQuery = `
+      SELECT 
+        g.name as product_name,
+        COUNT(*) as order_count,
+        SUM(od.quantity) as total_quantity,
+        SUM(od.quantity * od.price) as total_amount
+      FROM cargo.dbo.OrderDetails od
+      JOIN cargo.dbo.Goods g ON od.goodsId = g.id
+      JOIN customer_orders co ON od.orderId = co.order_id
+      GROUP BY g.name
+      ORDER BY total_amount DESC
+      OFFSET 0 ROWS
+      FETCH NEXT 20 ROWS ONLY
+    `;
+
+    const [productData] = await sequelize.query(productQuery);
+    
+    await sequelize.query(`
+      INSERT INTO customer_analysis (customer_id, analysis_type, analysis_data)
+      VALUES (?, ?, ?)
+    `, {
+      replacements: [
+        'ALL',
+        'product_preferences',
+        JSON.stringify(productData)
+      ]
+    });
+
+    logger.info('客户分析数据生成完成');
+  } catch (error) {
+    logger.error('生成客户分析数据失败:', error);
+    throw error;
+  }
+};
+
+// 客户分群逻辑
+const getCustomerSegment = (totalOrders: number, totalSpend: number): string => {
+  if (totalSpend >= 1000 || totalOrders >= 20) {
+    return 'VIP客户';
+  } else if (totalSpend >= 500 || totalOrders >= 10) {
+    return '高价值客户';
+  } else if (totalSpend >= 200 || totalOrders >= 5) {
+    return '中价值客户';
+  } else if (totalSpend >= 50 || totalOrders >= 2) {
+    return '低价值客户';
+  } else {
+    return '新客户';
+  }
+};
+
+// 获取客户列表
+export const getCustomers = async (params: {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}): Promise<{
+  customers: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+}> => {
+  try {
+    const { page = 1, pageSize = 10, search = '', sortBy = 'total_orders', sortOrder = 'desc' } = params;
+    const offset = (page - 1) * pageSize;
+
+    let whereClause = '';
+    if (search) {
+      whereClause = `WHERE customer_id LIKE '%${search}%' OR phone LIKE '%${search}%'`;
+    }
+
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM customer_profiles
+      ${whereClause}
+    `;
+
+    const [countResult] = await sequelize.query(countQuery);
+    const total = (countResult as any[])[0].total;
+
+    const query = `
+      SELECT 
+        customer_id,
+        open_id,
+        vip_num,
+        phone,
+        nickname,
+        gender,
+        city,
+        district,
+        first_order_date,
+        last_order_date,
+        total_orders,
+        total_spend,
+        avg_order_amount,
+        customer_segment
+      FROM customer_profiles
+      ${whereClause}
+      ORDER BY ${sortBy} ${sortOrder}
+      OFFSET ${offset} ROWS
+      FETCH NEXT ${pageSize} ROWS ONLY
+    `;
+
+    const [result] = await sequelize.query(query);
+
+    return {
+      customers: result,
+      total,
+      page,
+      pageSize
+    };
+  } catch (error) {
+    logger.error('获取客户列表失败:', error);
+    throw error;
+  }
+};
+
+// 获取客户订单
+export const getCustomerOrders = async (customerId: string, params: {
+  page?: number;
+  pageSize?: number;
+}): Promise<{
+  orders: any[];
+  total: number;
+  page: number;
+  pageSize: number;
+}> => {
+  try {
+    const { page = 1, pageSize = 10 } = params;
+    const offset = (page - 1) * pageSize;
+
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM customer_orders
+      WHERE customer_id = ?
+    `;
+
+    const [countResult] = await sequelize.query(countQuery, { replacements: [customerId] });
+    const total = (countResult as any[])[0].total;
+
+    const query = `
+      SELECT 
+        order_id,
+        order_no,
+        order_date,
+        total_amount,
+        pay_state,
+        shop_id
+      FROM customer_orders
+      WHERE customer_id = ?
+      ORDER BY order_date DESC
+      OFFSET ${offset} ROWS
+      FETCH NEXT ${pageSize} ROWS ONLY
+    `;
+
+    const [result] = await sequelize.query(query, { replacements: [customerId] });
+
+    return {
+      orders: result,
+      total,
+      page,
+      pageSize
+    };
+  } catch (error) {
+    logger.error('获取客户订单失败:', error);
+    throw error;
+  }
+};
+
+// 获取订单详情
+export const getOrderDetail = async (orderId: number): Promise<any> => {
+  try {
+    
+    const query = `
+      SELECT 
+        o.id,
+        o.orderNo,
+        o.recordTime,
+        o.total,
+        o.cash,
+        o.payState,
+        o.shopId,
+        o.deliverType,
+        o.payType,
+        o.vipTel,
+        o.vipId,
+        o.openId
+      FROM cargo.dbo.Orders o
+      WHERE o.id = ?
+    `;
+
+    const [result] = await sequelize.query(query, { replacements: [orderId] });
+
+    return result[0] || null;
+  } catch (error) {
+    logger.error('获取订单详情失败:', error);
+    throw error;
+  }
+};
+
+// 获取客户画像仪表板数据
+export const getCustomerProfileDashboard = async (filters?: {
+  city?: string;
+  store?: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<any> => {
+  try {
+    // 确保使用正确的数据库上下文
+    await sequelize.query('USE hotdog2030');
+    
+    // 构建过滤条件
+    let whereClause = '';
+    let replacements: any = {};
+    
+    if (filters?.city) {
+      whereClause += ' AND shopName = @city';
+      replacements.city = filters.city;
+    }
+    
+    if (filters?.store) {
+      whereClause += ' AND shopName = @store';
+      replacements.store = filters.store;
+    }
+    
+    if (filters?.startDate) {
+      whereClause += ' AND first_order_date >= @startDate';
+      replacements.startDate = filters.startDate;
+    }
+    
+    if (filters?.endDate) {
+      whereClause += ' AND last_order_date <= @endDate';
+      replacements.endDate = filters.endDate;
+    }
+    
+    const statsQuery = `
+      SELECT 
+        COUNT(*) as total_customers,
+        SUM(total_orders) as total_orders,
+        SUM(total_spend) as total_spend,
+        AVG(total_spend) as avg_customer_value
+      FROM customer_profiles
+      WHERE 1=1 ${whereClause}
+    `;
+
+    const [statsResult] = await sequelize.query(statsQuery, { replacements });
+    const stats = (statsResult as any[])[0];
+
+    // 获取客户分群分布
+    const segmentQuery = `
+      SELECT 
+        customer_segment,
+        COUNT(*) as count
+      FROM customer_profiles
+      WHERE 1=1 ${whereClause}
+      GROUP BY customer_segment
+      ORDER BY count DESC
+    `;
+
+    const [segmentResult] = await sequelize.query(segmentQuery, { replacements });
+
+    // 获取购买次数分布 - 简化查询
+    const orderCountQuery = `
+      SELECT 
+        order_range,
+        COUNT(*) as count
+      FROM (
+        SELECT 
+          CASE 
+            WHEN total_orders >= 20 THEN '20次以上'
+            WHEN total_orders >= 10 THEN '10-19次'
+            WHEN total_orders >= 5 THEN '5-9次'
+            WHEN total_orders >= 2 THEN '2-4次'
+            ELSE '1次'
+          END as order_range
+        FROM customer_profiles
+        WHERE 1=1 ${whereClause}
+      ) t
+      GROUP BY order_range
+      ORDER BY 
+        CASE order_range
+          WHEN '20次以上' THEN 1
+          WHEN '10-19次' THEN 2
+          WHEN '5-9次' THEN 3
+          WHEN '2-4次' THEN 4
+          WHEN '1次' THEN 5
+        END
+    `;
+
+    const [orderCountResult] = await sequelize.query(orderCountQuery, { replacements });
+
+    // 获取时间分布数据
+    const timeDistributionQuery = `
+      SELECT 
+        DATEPART(HOUR, order_date) as hour_of_day,
+        COUNT(*) as total_orders,
+        SUM(total_amount) as total_amount
+      FROM customer_orders co
+      INNER JOIN customer_profiles cp ON co.customer_id = cp.customer_id
+      WHERE 1=1 ${whereClause}
+      GROUP BY DATEPART(HOUR, order_date)
+      ORDER BY hour_of_day
+    `;
+
+    const [timeDistributionResult] = await sequelize.query(timeDistributionQuery, { replacements });
+
+    // 返回与前端期望格式匹配的数据结构
+    return {
+      summary: {
+        total_customers: stats.total_customers,
+        active_customers: Math.floor(stats.total_customers * 0.7), // 估算活跃客户数
+        total_orders: stats.total_orders,
+        total_spend: stats.total_spend,
+        avg_customer_value: stats.avg_customer_value,
+        avg_order_amount: stats.total_spend / stats.total_orders, // 平均客单价
+        customer_lifetime_value: stats.avg_customer_value * 12 // 估算客户生命周期价值
+      },
+      segments: (segmentResult as any[]).map((item: any) => ({
+        segment: item.customer_segment,
+        count: item.count
+      })),
+      timeDistribution: (timeDistributionResult as any[]).map((item: any) => ({
+        hour_of_day: item.hour_of_day,
+        total_orders: item.total_orders,
+        total_amount: item.total_amount
+      })),
+      productPreferences: [], // 暂时为空，后续添加商品维度
+      aiSuggestions: [] // 暂时为空，后续添加AI建议
+    };
+  } catch (error) {
+    logger.error('获取客户画像仪表板数据失败:', error);
+    throw error;
+  }
+};
+
+// 获取商品偏好分析
+export const getProductPreferences = async (filters?: {
+  city?: string;
+  store?: string;
+  startDate?: string;
+  endDate?: string;
+}): Promise<any[]> => {
+  try {
+    // 确保使用正确的数据库上下文
+    await sequelize.query('USE hotdog2030');
+    
+    // 构建过滤条件
+    let whereClause = '';
+    let replacements: any = {};
+    
+    if (filters?.city) {
+      whereClause += ' AND cp.city = @city';
+      replacements.city = filters.city;
+    }
+    
+    if (filters?.store) {
+      whereClause += ' AND cp.shopName = @store';
+      replacements.store = filters.store;
+    }
+    
+    if (filters?.startDate) {
+      whereClause += ' AND co.order_date >= @startDate';
+      replacements.startDate = filters.startDate;
+    }
+    
+    if (filters?.endDate) {
+      whereClause += ' AND co.order_date <= @endDate';
+      replacements.endDate = filters.endDate;
+    }
+
+    // 从源数据获取商品信息（这里需要根据实际的商品表结构调整）
+    const productQuery = `
+      SELECT 
+        '热狗' as product_name,
+        COUNT(*) as order_count,
+        SUM(o.total) as total_amount,
+        AVG(o.total) as avg_amount
+      FROM cargo.dbo.Orders o
+      INNER JOIN hotdog2030.dbo.customer_profiles cp ON o.openId = cp.customer_id
+      WHERE o.delflag = 0 
+        AND o.payState IN (1, 2, 3)
+        AND o.openId IS NOT NULL
+        ${whereClause}
+      GROUP BY '热狗'
+      ORDER BY total_amount DESC
+    `;
+
+    const [productResult] = await sequelize.query(productQuery, { replacements });
+    
+    // 如果没有商品数据，返回默认数据
+    if (!productResult || (productResult as any[]).length === 0) {
+      return [
+        {
+          product_name: '热狗',
+          order_count: 0,
+          total_amount: 0,
+          avg_amount: 0,
+          percentage: 0
+        }
+      ];
+    }
+
+    const totalAmount = (productResult as any[]).reduce((sum, item) => sum + item.total_amount, 0);
+    
+    return (productResult as any[]).map(item => ({
+      ...item,
+      percentage: totalAmount > 0 ? ((item.total_amount / totalAmount) * 100).toFixed(1) : 0
+    }));
+  } catch (error) {
+    logger.error('获取商品偏好分析失败:', error);
+    return [];
+  }
+};
+
+// 清理客户画像表
+export const cleanupTables = async (): Promise<void> => {
+  try {
+    logger.info('开始清理客户画像表...');
+    
+    // 删除所有客户画像相关表
+    const tablesToDrop = [
+      'customer_profiles',
+      'customer_orders', 
+      'customer_analysis',
+      'customer_time_analysis',
+      'customer_product_preferences',
+      'ai_marketing_suggestions'
+    ];
+    
+    for (const tableName of tablesToDrop) {
+      try {
+        await sequelize.query(`DROP TABLE IF EXISTS ${tableName}`);
+        logger.info(`已删除表: ${tableName}`);
+      } catch (error) {
+        logger.warn(`删除表 ${tableName} 失败:`, error);
+      }
+    }
+    
+    logger.info('客户画像表清理完成');
+  } catch (error) {
+    logger.error('清理客户画像表失败:', error);
+    throw error;
+  }
+};
+
+// 获取门店列表
+export const getStores = async (): Promise<any[]> => {
+  try {
+    const [stores] = await sequelize.query(`
+      SELECT DISTINCT 
+        shopId as id,
+        shopName as name
+      FROM cargo.dbo.Orders 
+      WHERE shopId IS NOT NULL 
+        AND shopName IS NOT NULL
+        AND shopName != ''
+        AND shopName NOT LIKE '%test%'
+        AND shopName NOT LIKE '%测试%'
+        AND shopName NOT LIKE '%SELECT%'
+        AND shopName NOT LIKE '%SLEEP%'
+        AND shopName NOT LIKE '%UNION%'
+        AND shopName NOT LIKE '%INJECT%'
+        AND shopName NOT LIKE '%DROP%'
+        AND shopName NOT LIKE '%DELETE%'
+        AND shopName NOT LIKE '%UPDATE%'
+        AND shopName NOT LIKE '%INSERT%'
+        AND shopName NOT LIKE '%bf%'
+        AND shopName NOT LIKE '%27%'
+        AND shopName NOT LIKE '%22%'
+        AND shopName NOT LIKE '%5C%'
+        AND shopName NOT LIKE '%0d%'
+        AND shopName NOT LIKE '%0a%'
+        AND shopName NOT LIKE '%23%'
+        AND shopName NOT LIKE '%#%'
+        AND LEN(shopName) > 1
+        AND LEN(shopName) < 50
+      ORDER BY shopName
+    `);
+    
+    // 进一步去重，确保shopId唯一
+    const uniqueStores = (stores as any[]).reduce((acc, store) => {
+      if (!acc.find(s => s.id === store.id)) {
+        acc.push(store);
+      }
+      return acc;
+    }, []);
+    
+    // 过滤掉异常的门店名称
+    const validStores = uniqueStores.filter(store => {
+      const name = store.name || '';
+      return name.length > 1 && 
+             name.length < 50 && 
+             !name.includes('SELECT') &&
+             !name.includes('SLEEP') &&
+             !name.includes('UNION') &&
+             !name.includes('INJECT') &&
+             !name.includes('DROP') &&
+             !name.includes('DELETE') &&
+             !name.includes('UPDATE') &&
+             !name.includes('INSERT') &&
+             !name.includes('%bf%') &&
+             !name.includes('%27%') &&
+             !name.includes('%22%') &&
+             !name.includes('%5C%') &&
+             !name.includes('%0d%') &&
+             !name.includes('%0a%') &&
+             !name.includes('%23%') &&
+             !name.includes('%#%') &&
+             /^[\u4e00-\u9fa5a-zA-Z0-9\s\-_()（）]+$/.test(name); // 只允许中文、英文、数字、空格、连字符、下划线、括号
+    });
+    
+    logger.info(`获取到 ${validStores.length} 个有效门店`);
+    return validStores;
+  } catch (error) {
+    logger.error('获取门店列表失败:', error);
+    return [];
+  }
+};
+
+// 获取城市列表
+export const getCities = async (): Promise<any[]> => {
+  try {
+    const [cities] = await sequelize.query(`
+      SELECT DISTINCT 
+        shopName as name
+      FROM cargo.dbo.Orders 
+      WHERE shopName IS NOT NULL 
+        AND shopName != ''
+        AND shopName NOT LIKE '%测试%'
+        AND shopName NOT LIKE '%test%'
+        AND shopName NOT LIKE '%SELECT%'
+        AND shopName NOT LIKE '%SLEEP%'
+        AND shopName NOT LIKE '%AND%'
+        AND shopName NOT LIKE '%OR%'
+        AND shopName NOT LIKE '%FROM%'
+        AND shopName NOT LIKE '%WHERE%'
+        AND shopName NOT LIKE '%#%'
+        AND shopName NOT LIKE '%--%'
+        AND shopName NOT LIKE '%${%'
+        AND shopName NOT LIKE '%jndi%'
+        AND shopName NOT LIKE '%ldap%'
+        AND shopName NOT LIKE '%rmi%'
+        AND shopName NOT LIKE '%hostname%'
+        AND shopName NOT LIKE '%username%'
+        AND shopName NOT LIKE '%javapath%'
+        AND LEN(shopName) > 2
+        AND LEN(shopName) < 50
+        AND shopName LIKE '%[一-龯]%'
+      ORDER BY shopName
+    `);
+    
+    return cities as any[];
+  } catch (error) {
+    logger.error('获取城市列表失败:', error);
+    return [];
+  }
+};
+
+// 测试客户数据查询
+export const testCustomerQuery = async (): Promise<any> => {
+  try {
+    const [result] = await sequelize.query(`
+      SELECT TOP 10 
+        customer_id,
+        COUNT(*) as order_count,
+        SUM(total_amount) as total_spend
+      FROM cargo.dbo.Orders 
+      WHERE customer_id IS NOT NULL 
+        AND customer_id != ''
+      GROUP BY customer_id
+      ORDER BY total_spend DESC
+    `);
+    
+    return result;
+  } catch (error) {
+    logger.error('测试客户数据查询失败:', error);
+    throw error;
+  }
+};
+
+// 简化测试客户数据查询
+export const testSimpleQuery = async (): Promise<any> => {
+  try {
+    const [result] = await sequelize.query(`
+      SELECT TOP 5 
+        customer_id,
+        order_no,
+        total_amount,
+        order_date
+      FROM cargo.dbo.Orders 
+      WHERE customer_id IS NOT NULL 
+        AND customer_id != ''
+      ORDER BY order_date DESC
+    `);
+    
+    return result;
+  } catch (error) {
+    logger.error('简化测试客户数据查询失败:', error);
+    throw error;
+  }
+};
+
+// 获取指定城市下的门店列表
+export const getStoresByCity = async (city: string): Promise<any[]> => {
+  try {
+    const [stores] = await sequelize.query(`
+      SELECT DISTINCT 
+        shopName as name,
+        shop_id as id
+      FROM cargo.dbo.Orders 
+      WHERE shopName = @city
+        AND shopName IS NOT NULL 
+        AND shopName != ''
+        AND shopName NOT LIKE '%测试%'
+        AND shopName NOT LIKE '%test%'
+        AND shopName NOT LIKE '%SELECT%'
+        AND shopName NOT LIKE '%SLEEP%'
+        AND shopName NOT LIKE '%AND%'
+        AND shopName NOT LIKE '%OR%'
+        AND shopName NOT LIKE '%FROM%'
+        AND shopName NOT LIKE '%WHERE%'
+        AND shopName NOT LIKE '%#%'
+        AND shopName NOT LIKE '%--%'
+        AND shopName NOT LIKE '%${%'
+        AND shopName NOT LIKE '%jndi%'
+        AND shopName NOT LIKE '%ldap%'
+        AND shopName NOT LIKE '%rmi%'
+        AND shopName NOT LIKE '%hostname%'
+        AND shopName NOT LIKE '%username%'
+        AND shopName NOT LIKE '%javapath%'
+        AND LEN(shopName) > 2
+        AND LEN(shopName) < 50
+        AND shopName LIKE '%[一-龯]%'
+      ORDER BY shopName
+    `, {
+      replacements: { city },
+      type: sequelize.QueryTypes.SELECT
+    });
+    
+    return stores as any[];
+  } catch (error) {
+    logger.error('获取指定城市门店列表失败:', error);
+    return [];
+  }
+};
+        AND shopName LIKE '%[一-龯]%'
+      ORDER BY shopName
+    `, {
+      replacements: { city },
+      type: sequelize.QueryTypes.SELECT
+    });
+    
+    return stores as any[];
+  } catch (error) {
+    logger.error('获取指定城市门店列表失败:', error);
+    return [];
+  }
+};
+
+// 默认导出
+export default {
+  syncCustomerProfilesAsync,
+  getSyncStatus,
+  createTables,
+  getCustomers,
+  getCustomerOrders,
+  getOrderDetail,
+  getCustomerProfileDashboard,
+  cleanupTables,
+  getStores,
+  getCities,
+  getStoresByCity,
+  testCustomerQuery,
+  testSimpleQuery
+};
