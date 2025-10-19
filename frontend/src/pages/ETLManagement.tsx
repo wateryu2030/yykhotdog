@@ -25,7 +25,7 @@ import {
   TeamOutlined,
   ShopOutlined,
   ShoppingOutlined,
-  TrendingUpOutlined,
+  RiseOutlined,
   EnvironmentOutlined,
   ThunderboltOutlined,
   ReloadOutlined,
@@ -139,7 +139,7 @@ const ETLManagement: React.FC = () => {
       5: TeamOutlined,
       6: BarChartOutlined,
       7: TeamOutlined,
-      8: TrendingUpOutlined,
+      8: RiseOutlined,
       9: EnvironmentOutlined,
       10: ThunderboltOutlined
     };

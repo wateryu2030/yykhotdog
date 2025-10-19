@@ -20,7 +20,7 @@ import {
   Badge,
   Avatar,
   Timeline,
-  Tooltip,
+  Tooltip as AntTooltip,
   Empty,
   Select,
   DatePicker,
@@ -35,7 +35,7 @@ import {
   TrophyOutlined,
   FireOutlined,
   EnvironmentOutlined,
-  TrendingUpOutlined,
+  RiseOutlined,
   WarningOutlined,
   CheckCircleOutlined,
   EyeOutlined,
@@ -56,8 +56,8 @@ import {
   LinearScale,
   PointElement,
   LineElement,
-  Title,
-  Tooltip,
+  Title as ChartTitle,
+  Tooltip as ChartTooltip,
   Legend,
   ArcElement,
   BarElement,
@@ -77,8 +77,8 @@ ChartJS.register(
   LinearScale,
   PointElement,
   LineElement,
-  Title,
-  Tooltip,
+  ChartTitle,
+  ChartTooltip,
   Legend,
   ArcElement,
   BarElement,
@@ -249,7 +249,7 @@ const EnhancedAIInsights: React.FC = () => {
     switch (type) {
       case 'warning': return <WarningOutlined style={{ color: '#faad14' }} />;
       case 'success': return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
-      case 'info': return <TrendingUpOutlined style={{ color: '#1890ff' }} />;
+      case 'info': return <RiseOutlined style={{ color: '#1890ff' }} />;
       case 'error': return <WarningOutlined style={{ color: '#ff4d4f' }} />;
       default: return <RobotOutlined />;
     }
@@ -368,7 +368,7 @@ const EnhancedAIInsights: React.FC = () => {
                         value={metrics?.growth_rate || 0}
                         precision={2}
                         suffix="%"
-                        valueStyle={{ color: metrics?.growth_rate > 0 ? '#3f8600' : '#cf1322' }}
+                        valueStyle={{ color: (metrics?.growth_rate || 0) > 0 ? '#3f8600' : '#cf1322' }}
                       />
                     </Col>
                     <Col span={6}>
@@ -408,10 +408,10 @@ const EnhancedAIInsights: React.FC = () => {
                           <div>
                             <Space>
                               <Text strong>{insight.title}</Text>
-                              <Tag color={getImpactColor(insight.impact)} size="small">
+                              <Tag color={getImpactColor(insight.impact)}>
                                 {insight.impact}
                               </Tag>
-                              <Tag color={getCategoryColor(insight.category)} size="small">
+                              <Tag color={getCategoryColor(insight.category)}>
                                 {insight.category}
                               </Tag>
                             </Space>

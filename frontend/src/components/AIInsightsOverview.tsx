@@ -20,7 +20,7 @@ import {
   EnvironmentOutlined,
   ThunderboltOutlined,
   EyeOutlined,
-  TrendingUpOutlined,
+  RiseOutlined,
   WarningOutlined,
   CheckCircleOutlined
 } from '@ant-design/icons';
@@ -87,7 +87,7 @@ const AIInsightsOverview: React.FC<AIInsightsOverviewProps> = ({ onViewDetails }
     switch (type) {
       case 'warning': return <WarningOutlined style={{ color: '#faad14' }} />;
       case 'success': return <CheckCircleOutlined style={{ color: '#52c41a' }} />;
-      case 'info': return <TrendingUpOutlined style={{ color: '#1890ff' }} />;
+      case 'info': return <RiseOutlined style={{ color: '#1890ff' }} />;
       default: return <RobotOutlined />;
     }
   };
@@ -203,7 +203,7 @@ const AIInsightsOverview: React.FC<AIInsightsOverviewProps> = ({ onViewDetails }
                 <Space>
                   {getInsightIcon(insight.type)}
                   <Text strong>{insight.title}</Text>
-                  <Tag color={getInsightColor(insight.priority)} size="small">
+                  <Tag color={getInsightColor(insight.priority)}>
                     {insight.priority}
                   </Tag>
                 </Space>

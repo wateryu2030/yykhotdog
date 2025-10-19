@@ -1044,7 +1044,7 @@ const Operations: React.FC = () => {
                                 <div>
                                   <div style={{ fontWeight: 'bold', fontSize: '14px' }}>{text}</div>
                                   <div style={{ color: '#8c8c8c', fontSize: '12px' }}>
-                                    {record.store_type === '直营店' ? '直营店' : '加盟店'}
+                                    {(record as any).store_type === '直营店' ? '直营店' : '加盟店'}
                                   </div>
                                 </div>
                               ),

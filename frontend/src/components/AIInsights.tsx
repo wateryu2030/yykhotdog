@@ -32,7 +32,7 @@ import {
   TrophyOutlined,
   FireOutlined,
   EnvironmentOutlined,
-  TrendingUpOutlined,
+  RiseOutlined,
   WarningOutlined,
   CheckCircleOutlined,
   EyeOutlined,
@@ -50,7 +50,7 @@ import {
   PointElement,
   LineElement,
   Title,
-  Tooltip,
+  Tooltip as ChartTooltip,
   Legend,
   ArcElement,
   BarElement,
@@ -58,7 +58,7 @@ import {
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import axios from 'axios';
 
-const { Title, Text } = Typography;
+const { Title: AntTitle, Text } = Typography;
 const { TabPane } = Tabs;
 
 // 注册Chart.js组件
@@ -68,7 +68,7 @@ ChartJS.register(
   PointElement,
   LineElement,
   Title,
-  Tooltip,
+  ChartTooltip,
   Legend,
   ArcElement,
   BarElement,
@@ -283,10 +283,10 @@ const AIInsights: React.FC = () => {
     <div style={{ padding: '24px' }}>
       <Card>
         <div style={{ marginBottom: '24px' }}>
-          <Title level={2}>
+          <AntTitle level={2}>
             <RobotOutlined style={{ marginRight: '8px', color: '#1890ff' }} />
             AI智能洞察
-          </Title>
+          </AntTitle>
           <Text type="secondary">基于ETL分析层的智能数据洞察和业务建议</Text>
         </div>
 
