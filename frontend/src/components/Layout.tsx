@@ -12,7 +12,8 @@ import {
   SettingOutlined,
   LineChartOutlined,
   TeamOutlined,
-  ShoppingOutlined
+  ShoppingOutlined,
+  DatabaseOutlined
 } from '@ant-design/icons';
 
   const { Sider, Content } = AntLayout;
@@ -77,6 +78,11 @@ const Layout: React.FC = () => {
       key: '/customer-compare',
       icon: <TeamOutlined />,
       label: '客户对比分析',
+    },
+    {
+      key: '/etl-management',
+      icon: <DatabaseOutlined />,
+      label: 'ETL数据同步',
     },
   ];
 

@@ -21,6 +21,7 @@ import schoolManagementRoutes from './routes/schoolManagement';
 import checkDatabaseRoutes from './routes/checkDatabase';
 import operationsRoutes from './routes/operations';
 import salesPredictionRoutes from './routes/salesPrediction';
+import etlManagementRoutes from './routes/etlManagement';
 
 // 加载环境变量
 dotenv.config({ path: '../deploy.env' });
@@ -183,6 +184,7 @@ app.use('/api/school-management', schoolManagementRoutes);
 app.use('/api/check-database', checkDatabaseRoutes);
 app.use('/api/operations', operationsRoutes);
 app.use('/api/sales-prediction', salesPredictionRoutes);
+app.use('/api/etl', etlManagementRoutes);
 
 // 404处理
 app.use(notFoundHandler);

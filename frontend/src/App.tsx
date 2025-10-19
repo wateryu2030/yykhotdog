@@ -12,6 +12,7 @@ import NewSiteSelection from './pages/NewSiteSelection';
 import StoreOpening from './pages/StoreOpening';
 import Login from './pages/Login';
 import SalesComparison from './pages/SalesComparison';
+import ETLManagement from './pages/ETLManagement';
 import './App.css';
 
 const App: React.FC = () => {
@@ -29,6 +30,7 @@ const App: React.FC = () => {
             <Route path="new-site-selection" element={<NewSiteSelection />} />
             <Route path="store-opening" element={<StoreOpening />} />
             <Route path="sales-comparison" element={<SalesComparison />} />
+            <Route path="etl-management" element={<ETLManagement />} />
           </Route>
         </Routes>
       </Router>
