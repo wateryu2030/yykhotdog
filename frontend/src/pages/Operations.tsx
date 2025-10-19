@@ -58,6 +58,7 @@ import { backendAPI } from '../config/api';
 import axios from 'axios';
 import SalesPredictionChart from '../components/SalesPredictionChart';
 import AIInsights from '../components/AIInsights';
+import AIInsightsOverview from '../components/AIInsightsOverview';
 
 const { Title: AntTitle, Text } = Typography;
 
@@ -986,6 +987,13 @@ const Operations: React.FC = () => {
                         )}
                       </div>
                     </Card>
+                  </Col>
+                </Row>
+
+                {/* AI洞察快速概览 */}
+                <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+                  <Col span={24}>
+                    <AIInsightsOverview onViewDetails={() => setAIInsightsVisible(true)} />
                   </Col>
                 </Row>
 

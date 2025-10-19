@@ -253,32 +253,32 @@ router.get('/insights', async (req: Request, res: Response) => {
     const insights = [];
 
     // 利润洞察
-    if (profitData[0] && profitData[0].avg_margin < 30) {
+    if (profitData[0] && (profitData[0] as any).avg_margin < 30) {
       insights.push({
         type: 'warning',
         title: '毛利率偏低',
-        description: `平均毛利率仅${profitData[0].avg_margin.toFixed(1)}%，建议优化成本结构`,
+        description: `平均毛利率仅${(profitData[0] as any).avg_margin.toFixed(1)}%，建议优化成本结构`,
         priority: 'high'
       });
     }
 
     // 客户洞察
     if (customerData[0]) {
-      const vipRatio = (customerData[0].vip_customers / customerData[0].total_customers * 100).toFixed(1);
+      const vipRatio = ((customerData[0] as any).vip_customers / (customerData[0] as any).total_customers * 100).toFixed(1);
       insights.push({
         type: 'info',
         title: 'VIP客户分析',
-        description: `VIP客户占比${vipRatio}%，共${customerData[0].vip_customers}人`,
+        description: `VIP客户占比${vipRatio}%，共${(customerData[0] as any).vip_customers}人`,
         priority: 'medium'
       });
     }
 
     // 预测洞察
-    if (forecastData[0] && forecastData[0].avg_forecast > 0) {
+    if (forecastData[0] && (forecastData[0] as any).avg_forecast > 0) {
       insights.push({
         type: 'success',
         title: '销售预测',
-        description: `未来7天平均预测销售额¥${forecastData[0].avg_forecast.toFixed(2)}`,
+        description: `未来7天平均预测销售额¥${(forecastData[0] as any).avg_forecast.toFixed(2)}`,
         priority: 'low'
       });
     }
