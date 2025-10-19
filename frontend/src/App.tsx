@@ -13,6 +13,7 @@ import StoreOpening from './pages/StoreOpening';
 import Login from './pages/Login';
 import SalesComparison from './pages/SalesComparison';
 import ETLManagement from './pages/ETLManagement';
+import AIInsightsPage from './pages/AIInsightsPage';
 import './App.css';
 
 const App: React.FC = () => {
@@ -31,6 +32,7 @@ const App: React.FC = () => {
             <Route path="store-opening" element={<StoreOpening />} />
             <Route path="sales-comparison" element={<SalesComparison />} />
             <Route path="etl-management" element={<ETLManagement />} />
+            <Route path="ai-insights" element={<AIInsightsPage />} />
           </Route>
         </Routes>
       </Router>

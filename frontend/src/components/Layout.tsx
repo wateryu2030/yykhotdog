@@ -13,7 +13,8 @@ import {
   LineChartOutlined,
   TeamOutlined,
   ShoppingOutlined,
-  DatabaseOutlined
+  DatabaseOutlined,
+  RobotOutlined
 } from '@ant-design/icons';
 
   const { Sider, Content } = AntLayout;
@@ -83,6 +84,11 @@ const Layout: React.FC = () => {
       key: '/etl-management',
       icon: <DatabaseOutlined />,
       label: 'ETL数据同步',
+    },
+    {
+      key: '/ai-insights',
+      icon: <RobotOutlined />,
+      label: 'AI智能洞察',
     },
   ];
 
