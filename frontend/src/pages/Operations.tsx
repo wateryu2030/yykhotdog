@@ -57,6 +57,7 @@ import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { backendAPI } from '../config/api';
 import axios from 'axios';
 import SalesPredictionChart from '../components/SalesPredictionChart';
+import AIInsights from '../components/AIInsights';
 
 const { Title: AntTitle, Text } = Typography;
 
@@ -302,6 +303,7 @@ const Operations: React.FC = () => {
   const [storeOrdersData, setStoreOrdersData] = useState<any[]>([]);
   const [storeCustomersData, setStoreCustomersData] = useState<any[]>([]);
   const [currentStoreName, setCurrentStoreName] = useState('');
+  const [aiInsightsVisible, setAIInsightsVisible] = useState(false);
 
   // 获取城市列表
   const fetchCities = async () => {
@@ -837,6 +839,14 @@ const Operations: React.FC = () => {
               />
             </div>
             <span style={{ fontSize: 18, marginRight: 16 }}>{timeStr} {dateStr}</span>
+            <Button 
+              type="primary" 
+              icon={<RobotOutlined />}
+              onClick={() => setAIInsightsVisible(true)}
+              style={{ marginRight: 16 }}
+            >
+              洞察AI
+            </Button>
             <Badge count={1} size="small" style={{ marginRight: 16 }}><BellOutlined style={{ fontSize: 22, color: '#666' }} /></Badge>
             <Avatar style={{ backgroundColor: '#87d068', marginRight: 8 }} icon={<UserOutlined />} />
             <span>管理员</span>
@@ -2059,6 +2069,24 @@ const Operations: React.FC = () => {
           size="small"
           scroll={{ x: 800 }}
         />
+      </Modal>
+
+      {/* AI洞察Modal */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <RobotOutlined style={{ marginRight: '8px', color: '#1890ff' }} />
+            AI智能洞察
+          </div>
+        }
+        open={aiInsightsVisible}
+        onCancel={() => setAIInsightsVisible(false)}
+        footer={null}
+        width="90%"
+        style={{ top: 20 }}
+        bodyStyle={{ padding: 0, height: '80vh', overflow: 'auto' }}
+      >
+        <AIInsights />
       </Modal>
 
       {/* 成功提示 */}
