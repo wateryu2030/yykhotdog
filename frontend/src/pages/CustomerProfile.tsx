@@ -21,9 +21,11 @@ import {
   TrophyOutlined,
   InfoCircleOutlined,
   TeamOutlined,
-  BellOutlined
+  BellOutlined,
+  RobotOutlined
 } from '@ant-design/icons';
 import { api } from '../config/api';
+import AIInsightsOverview from '../components/AIInsightsOverview';
 
 ChartJS.register(ArcElement, ChartTooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
 
@@ -445,6 +447,14 @@ const CustomerProfile: React.FC = () => {
           <span style={{ fontWeight: 'bold', fontSize: 28, color: '#fff' }}>客群画像</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center' }}>
+          <Button 
+            type="primary" 
+            icon={<RobotOutlined />}
+            onClick={() => setAiAnalysisVisible(true)}
+            style={{ marginRight: 16 }}
+          >
+            AI洞察
+          </Button>
           <span style={{ fontSize: 16, color: '#fff', marginRight: 16 }}>{timeStr} {dateStr}</span>
           <Badge count={1} size="small" style={{ marginRight: 16 }}>
             <BellOutlined style={{ fontSize: 20, color: '#fff' }} />
@@ -700,6 +710,13 @@ const CustomerProfile: React.FC = () => {
               valueStyle={{ color: '#722ed1', fontSize: '28px', fontWeight: 'bold' }}
             />
           </Card>
+        </Col>
+      </Row>
+
+      {/* AI洞察快速概览 */}
+      <Row gutter={20} style={{ marginBottom: '24px' }}>
+        <Col span={24}>
+          <AIInsightsOverview onViewDetails={() => setAiAnalysisVisible(true)} />
         </Col>
       </Row>
 
