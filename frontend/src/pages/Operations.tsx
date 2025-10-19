@@ -100,6 +100,7 @@ interface TopProduct {
   name: string;
   sales: number;
   profitMargin: number;
+  orders?: number;
 }
 
 interface RestockSuggestion {
@@ -147,6 +148,9 @@ interface StoreDashboardData {
   aiScore: AIScore;
   aiAlerts: AIAlert[];
   localEvents: LocalEvent[];
+  paymentStats?: PaymentStats[];
+  hourlyStats?: HourlyStats[];
+  recentOrders?: RecentOrder[];
 }
 
 interface Store {
@@ -158,16 +162,27 @@ interface Store {
 // 新增的细化统计接口
 interface HourlyStats {
   hour: number;
-  orderCount: number;
-  totalSales: number;
-  avgSpend: number;
+  order_count: number;
+  total_amount: number;
+  avg_amount: number;
 }
 
 interface PaymentStats {
-  payMode: string;
-  orderCount: number;
-  totalSales: number;
-  avgSpend: number;
+  payment_method: string;
+  order_count: number;
+  total_amount: number;
+  avg_amount: number;
+  method?: string;
+  percentage?: number;
+}
+
+interface RecentOrder {
+  id: string;
+  order_code: string;
+  total_amount: number;
+  pay_state: number;
+  created_at: string;
+  payment_method?: string;
 }
 
 interface OrderItem {
@@ -193,63 +208,47 @@ interface OrderListResponse {
 }
 
 interface OrderDetail {
-  id: number;
-  orderNo: string;
-  recordTime: string;
-  payMode: string;
-  vipAmount: number;
-  vipAmountZengSong: number;
-  cash: number;
-  total: number;
-  totalAmount: number;
-  openId: string;
-  remark: string;
-  payState: number;
-  shopId: number;
+  id: string;
+  order_no: string;
+  created_at: string;
+  pay_mode: string;
+  vipAmount?: number;
+  vipAmountZengSong?: number;
+  cash?: number;
+  total?: number;
+  total_amount: number;
+  customer_id?: string;
+  remark?: string;
+  pay_state: number;
+  store_id: string;
+  store_name?: string;
+  city?: string;
+  district?: string;
 }
 
 // 新增订单商品详情接口
 interface OrderGoodsItem {
-  id: number;
-  orderId: number;
-  categoryId: number;
-  categoryName: string;
-  goodsId: number;
-  goodsName: string;
-  goodsText: string;
-  goodsNumber: number;
-  goodsPrice: number;
-  goodsTotal: number;
-  orderScore: number;
-  useScore: number;
-  isRefund: number;
-  refundMoney: number;
-  refundScore: number;
-  recordTime: string;
-  shopId: number;
-  shopName: string;
-  standardPrice: number;
-  standardTotal: number;
-  otherTotal: number;
-  isPackage: number;
-  discountAmount: number;
-  realIncomeAmount: number;
-  costPrice: number;
-  profitPrice: number;
+  id: string;
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  price: number;
+  total_price: number;
+  created_at: string;
 }
 
 // 新增订单完整详情接口
 interface OrderFullDetail {
   order: OrderDetail;
-  goods: OrderGoodsItem[];
+  items: OrderGoodsItem[];
 }
 
 interface ProductStats {
-  goodsName: string;
-  orderCount: number;
-  totalQuantity: number;
-  totalSales: number;
-  avgOrderValue: number;
+  product_name: string;
+  order_count: number;
+  total_quantity: number;
+  total_amount: number;
+  avg_price: number;
 }
 
 const Operations: React.FC = () => {
@@ -268,6 +267,11 @@ const Operations: React.FC = () => {
     dayjs().subtract(1, 'day').endOf('day')
   ]);
   const [timeType, setTimeType] = useState<'today' | 'yesterday' | 'week' | 'month' | 'custom'>('yesterday');
+
+  // 安全的dateRange检查函数
+  const isValidDateRange = (range: [dayjs.Dayjs, dayjs.Dayjs] | null): range is [dayjs.Dayjs, dayjs.Dayjs] => {
+    return range !== null && Array.isArray(range) && range.length === 2 && !!range[0] && !!range[1];
+  };
 
   // 细化统计状态
   const [hourlyStats, setHourlyStats] = useState<HourlyStats[]>([]);
@@ -291,6 +295,13 @@ const Operations: React.FC = () => {
   // 筛选状态
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('');
   const [selectedHour, setSelectedHour] = useState<number | undefined>();
+  
+  // 门店下钻相关状态
+  const [storeOrdersVisible, setStoreOrdersVisible] = useState(false);
+  const [storeCustomersVisible, setStoreCustomersVisible] = useState(false);
+  const [storeOrdersData, setStoreOrdersData] = useState<any[]>([]);
+  const [storeCustomersData, setStoreCustomersData] = useState<any[]>([]);
+  const [currentStoreName, setCurrentStoreName] = useState('');
 
   // 获取城市列表
   const fetchCities = async () => {
@@ -334,30 +345,28 @@ const Operations: React.FC = () => {
     }
   };
 
-  // 获取门店列表
+  // 初始化：获取城市列表
   useEffect(() => {
-    const fetchStores = async () => {
-      try {
-        console.log('【前端调试】开始获取门店列表...');
-        // 使用customer-profile的stores API，它返回所有门店（无分页）
-        const response = await api.get('/customer-profile/stores');
-        console.log('【前端调试】API响应:', response.data);
-        if (response.data.success) {
-          console.log('【前端调试】门店数据:', response.data.data);
-          setStores(response.data.data);
-          if (response.data.data.length > 0) {
-            console.log('【前端调试】设置默认门店:', response.data.data[0].id);
-            setSelectedStore(response.data.data[0].id);
-          }
-        }
-      } catch (error) {
-        console.error('获取门店列表失败:', error);
-      }
-    };
-
-    fetchStores();
     fetchCities();
   }, []);
+
+  // 当城市列表加载完成后，自动选择第一个城市并加载其门店
+  useEffect(() => {
+    if (cities.length > 0 && !selectedCity) {
+      const firstCity = cities[0].name || cities[0].city_name;
+      console.log('【前端调试】自动选择第一个城市:', firstCity);
+      setSelectedCity(firstCity);
+      fetchStoresByCity(firstCity);
+    }
+  }, [cities]);
+
+  // 当门店列表加载完成后，如果之前没有选择门店，不自动选择第一个
+  // 这样可以展示整个城市的运营概览
+  useEffect(() => {
+    if (stores.length > 0 && selectedCity && !selectedStore) {
+      console.log('【前端调试】门店列表已加载，不自动选择门店，展示城市概览');
+    }
+  }, [stores]);
 
   // 获取运营概览汇总数据
   const fetchOverviewData = async () => {
@@ -365,7 +374,7 @@ const Operations: React.FC = () => {
     try {
       // 构建时间参数
       const timeParams = new URLSearchParams();
-      if (dateRange && dateRange.length === 2) {
+      if (isValidDateRange(dateRange)) {
         timeParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
         timeParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
       }
@@ -392,7 +401,7 @@ const Operations: React.FC = () => {
     try {
       // 构建时间参数
       const timeParams = new URLSearchParams();
-      if (dateRange && dateRange.length === 2) {
+      if (isValidDateRange(dateRange)) {
         timeParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
         timeParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
       }
@@ -400,6 +409,9 @@ const Operations: React.FC = () => {
 
       const response = await api.get(`/operations/dashboard/${selectedStore}?${timeParams.toString()}`);
       if (response.data.success) {
+        console.log('Dashboard数据:', response.data.data);
+        console.log('recentOrders:', response.data.data.recentOrders);
+        console.log('recentOrders长度:', response.data.data.recentOrders?.length);
         setDashboardData(response.data.data);
       }
     } catch (error) {
@@ -424,7 +436,7 @@ const Operations: React.FC = () => {
     
     try {
       const timeParams = new URLSearchParams();
-      if (dateRange && dateRange.length === 2) {
+      if (isValidDateRange(dateRange)) {
         timeParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
         timeParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
       }
@@ -445,7 +457,7 @@ const Operations: React.FC = () => {
     
     try {
       const timeParams = new URLSearchParams();
-      if (dateRange && dateRange.length === 2) {
+      if (isValidDateRange(dateRange)) {
         timeParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
         timeParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
       }
@@ -466,7 +478,7 @@ const Operations: React.FC = () => {
     
     try {
       const timeParams = new URLSearchParams();
-      if (dateRange && dateRange.length === 2) {
+      if (isValidDateRange(dateRange)) {
         timeParams.append('startDate', dateRange[0].format('YYYY-MM-DD'));
         timeParams.append('endDate', dateRange[1].format('YYYY-MM-DD'));
       }
@@ -490,7 +502,7 @@ const Operations: React.FC = () => {
       params.append('page', page.toString());
       params.append('pageSize', pageSize.toString());
       
-      if (dateRange && dateRange.length === 2) {
+      if (isValidDateRange(dateRange)) {
         params.append('startDate', dateRange[0].format('YYYY-MM-DD'));
         params.append('endDate', dateRange[1].format('YYYY-MM-DD'));
       }
@@ -503,7 +515,7 @@ const Operations: React.FC = () => {
         params.append('hour', filters.hour.toString());
       }
 
-      const response = await api.get(`/operations/orders/${selectedStore}?${params.toString()}`);
+      const response = await api.get(`/operations/orders/store/${selectedStore}?${params.toString()}`);
       if (response.data.success) {
         setOrderList(response.data.data);
       }
@@ -562,6 +574,38 @@ const Operations: React.FC = () => {
     } catch (error) {
       console.error('操作执行失败:', error);
       setToastMessage('操作执行失败，请重试');
+    }
+  };
+
+  // 处理门店订单点击
+  const handleStoreOrdersClick = async (storeId: string, storeName: string) => {
+    try {
+      setCurrentStoreName(storeName);
+      const response = await api.get(`/operations/stores/${storeId}/orders`);
+      if (response.data.success) {
+        setStoreOrdersData(response.data.data);
+        setStoreOrdersVisible(true);
+      }
+    } catch (error) {
+      console.error('获取门店订单失败:', error);
+      setToastMessage('获取门店订单失败！');
+      setTimeout(() => setToastMessage(''), 3000);
+    }
+  };
+
+  // 处理门店客户点击
+  const handleStoreCustomersClick = async (storeId: string, storeName: string) => {
+    try {
+      setCurrentStoreName(storeName);
+      const response = await api.get(`/operations/stores/${storeId}/customers`);
+      if (response.data.success) {
+        setStoreCustomersData(response.data.data);
+        setStoreCustomersVisible(true);
+      }
+    } catch (error) {
+      console.error('获取门店客户失败:', error);
+      setToastMessage('获取门店客户失败！');
+      setTimeout(() => setToastMessage(''), 3000);
     }
   };
 
@@ -710,13 +754,13 @@ const Operations: React.FC = () => {
   };
 
   const formatTrend = (trend: number) => {
-    const percentage = (trend * 100).toFixed(1);
+    const percentage = (trend * 100).toFixed(2);
     if (trend > 0) {
       return <span style={{ color: '#52c41a' }}>+{percentage}%</span>;
     } else if (trend < 0) {
       return <span style={{ color: '#ff4d4f' }}>-{Math.abs(parseFloat(percentage))}%</span>;
     }
-    return <span style={{ color: '#8c8c8c' }}>0.0%</span>;
+    return <span style={{ color: '#8c8c8c' }}>0.00%</span>;
   };
 
   if (loading) {
@@ -738,7 +782,7 @@ const Operations: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px 0 24px', background: '#fff', borderRadius: 8, marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <TrophyOutlined style={{ fontSize: 28, color: '#faad14', marginRight: 8 }} />
-            <span style={{ fontWeight: 'bold', fontSize: 24 }}>运营模块</span>
+            <span style={{ fontWeight: 'bold', fontSize: 24 }}>运营</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
             {/* 城市选择器 */}
@@ -799,16 +843,6 @@ const Operations: React.FC = () => {
           </div>
         </div>
 
-      {/* 调试信息 */}
-      {process.env.NODE_ENV === 'development' && (
-        <div style={{ background: '#f0f0f0', padding: '10px', marginBottom: '16px', borderRadius: '4px', fontSize: '12px' }}>
-          <strong>调试信息:</strong> 
-          门店: {selectedStore || '未选择'} | 
-          时间: {timeType} | 
-          数据: {dashboardData ? '已加载' : '未加载'} | 
-          加载: {loading ? '是' : '否'}
-        </div>
-      )}
 
       <Tabs 
         defaultActiveKey="overview" 
@@ -842,12 +876,12 @@ const Operations: React.FC = () => {
                       {selectedStore && dashboardData && (
                         <>
                           <Progress
-                            percent={Math.min(100, (dashboardData.kpis.sales / dashboardData.kpis.target) * 100)}
+                            percent={Math.min(100, parseFloat(((dashboardData.kpis.sales / dashboardData.kpis.target) * 100).toFixed(2)))}
                             size="small"
                             style={{ marginTop: '8px' }}
                           />
                           <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '4px' }}>
-                            目标达成: {((dashboardData.kpis.sales / dashboardData.kpis.target) * 100).toFixed(1)}%
+                            目标达成: {((dashboardData.kpis.sales / dashboardData.kpis.target) * 100).toFixed(2)}%
                           </div>
                           <div style={{ fontSize: '12px', color: '#1890ff', marginTop: '4px' }}>
                             点击查看详细统计 →
@@ -856,7 +890,7 @@ const Operations: React.FC = () => {
                       )}
                       {!selectedStore && overviewData && (
                         <div style={{ fontSize: '12px', color: '#8c8c8c', marginTop: '4px' }}>
-                          {overviewData.kpis.salesTrend?.vsYesterday > 0 ? '+' : ''}{overviewData.kpis.salesTrend?.vsYesterday?.toFixed(1)}% vs 昨日
+                          {overviewData.kpis.salesTrend?.vsYesterday > 0 ? '+' : ''}{(overviewData.kpis.salesTrend?.vsYesterday || 0).toFixed(2)}% vs 昨日
                         </div>
                       )}
                     </Card>
@@ -877,11 +911,14 @@ const Operations: React.FC = () => {
                       <div style={{ fontSize: '12px', marginTop: '4px' }}>
                         {selectedStore && dashboardData ? (
                           <>
-                            {`${formatTrend(dashboardData.kpis.avgSpendTrend.vsYesterday)} vs 昨日`}
+                            <div style={{ display: 'flex', alignItems: 'center' }}>
+                              {formatTrend(dashboardData.kpis.avgSpendTrend.vsYesterday)}
+                              <span style={{ marginLeft: '4px', color: '#8c8c8c' }}>vs 昨日</span>
+                            </div>
                             <div style={{ color: '#52c41a', marginTop: '4px' }}>点击查看分时统计 →</div>
                           </>
                         ) : overviewData ? (
-                          `${overviewData.kpis.avgOrderTrend?.vsYesterday > 0 ? '+' : ''}${overviewData.kpis.avgOrderTrend?.vsYesterday?.toFixed(1)}% vs 昨日`
+                          `${overviewData.kpis.avgOrderTrend?.vsYesterday > 0 ? '+' : ''}${(overviewData.kpis.avgOrderTrend?.vsYesterday || 0).toFixed(2)}% vs 昨日`
                         ) : (
                           '暂无数据'
                         )}
@@ -907,7 +944,7 @@ const Operations: React.FC = () => {
                             <div style={{ color: '#fa8c16', marginTop: '4px' }}>点击查看支付统计 →</div>
                           </>
                         ) : overviewData ? (
-                          `${overviewData.kpis.customersTrend?.vsYesterday > 0 ? '+' : ''}${overviewData.kpis.customersTrend?.vsYesterday?.toFixed(1)}% vs 昨日`
+                          `${overviewData.kpis.customersTrend?.vsYesterday > 0 ? '+' : ''}${(overviewData.kpis.customersTrend?.vsYesterday || 0).toFixed(2)}% vs 昨日`
                         ) : (
                           '今日活跃用户'
                         )}
@@ -933,7 +970,7 @@ const Operations: React.FC = () => {
                             <div style={{ color: '#9254de', marginTop: '4px' }}>点击查看商品统计 →</div>
                           </>
                         ) : overviewData ? (
-                          `${overviewData.kpis.ordersTrend?.vsYesterday > 0 ? '+' : ''}${overviewData.kpis.ordersTrend?.vsYesterday?.toFixed(1)}% vs 昨日`
+                          `${overviewData.kpis.ordersTrend?.vsYesterday > 0 ? '+' : ''}${(overviewData.kpis.ordersTrend?.vsYesterday || 0).toFixed(2)}% vs 昨日`
                         ) : (
                           '今日订单'
                         )}
@@ -941,6 +978,392 @@ const Operations: React.FC = () => {
                     </Card>
                   </Col>
                 </Row>
+
+                {/* 门店列表表格 - 只在城市概览时显示 */}
+                {!selectedStore && stores.length > 0 && (
+                  <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+                    <Col span={24}>
+                      <Card 
+                        title="门店运营统计" 
+                        extra={
+                          <Space>
+                            <span style={{ color: '#8c8c8c', fontSize: '12px' }}>
+                              点击数字可查看详细信息
+                            </span>
+                          </Space>
+                        }
+                      >
+                        <Table
+                          dataSource={stores}
+                          pagination={{
+                            pageSize: 10,
+                            showSizeChanger: true,
+                            showQuickJumper: true,
+                            showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+                          }}
+                          columns={[
+                            {
+                              title: '排名',
+                              dataIndex: 'rank',
+                              key: 'rank',
+                              width: 60,
+                              render: (_, __, index) => (
+                                <Badge 
+                                  count={index + 1} 
+                                  style={{ 
+                                    backgroundColor: index < 3 ? '#1890ff' : '#8c8c8c',
+                                    fontSize: '12px'
+                                  }} 
+                                />
+                              ),
+                            },
+                            {
+                              title: '门店名称',
+                              dataIndex: 'store_name',
+                              key: 'store_name',
+                              width: 200,
+                              render: (text, record) => (
+                                <div>
+                                  <div style={{ fontWeight: 'bold', fontSize: '14px' }}>{text}</div>
+                                  <div style={{ color: '#8c8c8c', fontSize: '12px' }}>
+                                    {record.store_type === '直营店' ? '直营店' : '加盟店'}
+                                  </div>
+                                </div>
+                              ),
+                            },
+                            {
+                              title: '订单数',
+                              dataIndex: 'total_orders',
+                              key: 'total_orders',
+                              width: 120,
+                              align: 'center',
+                              render: (value, record) => (
+                                <div 
+                                  style={{ 
+                                    cursor: 'pointer',
+                                    color: '#1890ff',
+                                    fontWeight: 'bold',
+                                    fontSize: '16px',
+                                    textDecoration: 'underline'
+                                  }}
+                                  onClick={() => handleStoreOrdersClick(record.id, record.store_name)}
+                                >
+                                  {value || 0}
+                                </div>
+                              ),
+                            },
+                            {
+                              title: '客户数',
+                              dataIndex: 'total_customers',
+                              key: 'total_customers',
+                              width: 120,
+                              align: 'center',
+                              render: (value, record) => (
+                                <div 
+                                  style={{ 
+                                    cursor: 'pointer',
+                                    color: '#52c41a',
+                                    fontWeight: 'bold',
+                                    fontSize: '16px',
+                                    textDecoration: 'underline'
+                                  }}
+                                  onClick={() => handleStoreCustomersClick(record.id, record.store_name)}
+                                >
+                                  {value || 0}
+                                </div>
+                              ),
+                            },
+                            {
+                              title: '销售额',
+                              dataIndex: 'total_revenue',
+                              key: 'total_revenue',
+                              width: 120,
+                              align: 'center',
+                              render: (value) => (
+                                <div style={{ fontWeight: 'bold', fontSize: '16px', color: '#fa8c16' }}>
+                                  ¥{(value || 0).toFixed(1)}万
+                                </div>
+                              ),
+                            },
+                            {
+                              title: '客单价',
+                              dataIndex: 'avg_order_value',
+                              key: 'avg_order_value',
+                              width: 100,
+                              align: 'center',
+                              render: (value) => (
+                                <div style={{ color: '#8c8c8c', fontSize: '14px' }}>
+                                  ¥{Math.round(value || 0)}
+                                </div>
+                              ),
+                            },
+                            {
+                              title: '状态',
+                              dataIndex: 'status',
+                              key: 'status',
+                              width: 100,
+                              align: 'center',
+                              render: (status) => (
+                                <Tag color={status === '营业中' ? 'green' : status === '计划中' ? 'blue' : 'orange'}>
+                                  {status}
+                                </Tag>
+                              ),
+                            },
+                            {
+                              title: '操作',
+                              key: 'action',
+                              width: 120,
+                              align: 'center',
+                              render: (_, record) => (
+                                <Space>
+                                  <Button 
+                                    type="link" 
+                                    size="small"
+                                    onClick={() => setSelectedStore(record.id)}
+                                  >
+                                    查看详情
+                                  </Button>
+                                </Space>
+                              ),
+                            },
+                          ]}
+                          rowKey="id"
+                          size="small"
+                        />
+                      </Card>
+                    </Col>
+                  </Row>
+                )}
+
+                {/* 销售趋势图表 */}
+                <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+                  <Col xs={24} lg={16}>
+                    <Card title="销售趋势" extra={<BarChartOutlined />}>
+                      <div style={{ height: '300px' }}>
+                        {selectedStore && dashboardData && dashboardData.salesChart ? (
+                          <Line
+                            data={{
+                              labels: dashboardData.salesChart.labels,
+                              datasets: [
+                                {
+                                  label: '销售额',
+                                  data: dashboardData.salesChart.data,
+                                  borderColor: '#1890ff',
+                                  backgroundColor: 'rgba(24, 144, 255, 0.1)',
+                                  tension: 0.4,
+                                  fill: true,
+                                },
+                              ],
+                            }}
+                            options={{
+                              responsive: true,
+                              maintainAspectRatio: false,
+                              plugins: {
+                                legend: {
+                                  display: false,
+                                },
+                              },
+                              scales: {
+                                y: {
+                                  beginAtZero: true,
+                                  title: {
+                                    display: true,
+                                    text: '销售额 (¥)',
+                                  },
+                                },
+                              },
+                            }}
+                          />
+                        ) : (
+                          <div style={{ textAlign: 'center', padding: '50px', color: '#8c8c8c' }}>
+                            暂无销售趋势数据
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  </Col>
+                  <Col xs={24} lg={8}>
+                    <Card title="支付方式统计" extra={<CreditCardOutlined />}>
+                      <div style={{ height: '300px' }}>
+                        {selectedStore && dashboardData && dashboardData.paymentStats && dashboardData.paymentStats.length > 0 ? (
+                          <Doughnut
+                            data={{
+                              labels: dashboardData.paymentStats.map(item => item.method),
+                              datasets: [
+                                {
+                                  data: dashboardData.paymentStats.map(item => item.percentage),
+                                  backgroundColor: [
+                                    '#1890ff',
+                                    '#52c41a',
+                                    '#faad14',
+                                    '#f5222d',
+                                    '#722ed1',
+                                  ],
+                                },
+                              ],
+                            }}
+                            options={{
+                              responsive: true,
+                              maintainAspectRatio: false,
+                              plugins: {
+                                legend: {
+                                  position: 'bottom',
+                                },
+                              },
+                            }}
+                          />
+                        ) : (
+                          <div style={{ textAlign: 'center', padding: '50px', color: '#8c8c8c' }}>
+                            暂无支付方式数据
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  </Col>
+                </Row>
+
+                {/* 热门商品和时段分析 */}
+                <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+                  <Col xs={24} lg={12}>
+                    <Card title="热门商品" extra={<BarChartOutlined />}>
+                      {selectedStore && dashboardData && dashboardData.topProducts && dashboardData.topProducts.length > 0 ? (
+                        <List
+                          dataSource={dashboardData.topProducts}
+                          renderItem={(item, index) => (
+                            <List.Item key={index}>
+                              <List.Item.Meta
+                                avatar={
+                                  <div style={{
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: '50%',
+                                    background: index < 3 ? '#1890ff' : '#f0f0f0',
+                                    color: 'white',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontSize: '14px',
+                                    fontWeight: 'bold'
+                                  }}>
+                                    {index + 1}
+                                  </div>
+                                }
+                                title={item.name}
+                                description={
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <span>销售: ¥{item.sales.toFixed(2)}</span>
+                                    <span>订单: {item.orders}笔</span>
+                                  </div>
+                                }
+                              />
+                            </List.Item>
+                          )}
+                        />
+                      ) : (
+                        <div style={{ textAlign: 'center', padding: '30px', color: '#8c8c8c' }}>
+                          暂无热门商品数据
+                        </div>
+                      )}
+                    </Card>
+                  </Col>
+                  <Col xs={24} lg={12}>
+                    <Card title="时段分析" extra={<ClockCircleOutlined />}>
+                      <div style={{ height: '300px' }}>
+                        {selectedStore && dashboardData && dashboardData.hourlyStats && dashboardData.hourlyStats.length > 0 ? (
+                          <Bar
+                            data={{
+                              labels: dashboardData.hourlyStats.map(item => `${item.hour}:00`),
+                              datasets: [
+                                {
+                                  label: '订单数',
+                                  data: dashboardData.hourlyStats.map(item => item.order_count || 0),
+                                  backgroundColor: 'rgba(24, 144, 255, 0.6)',
+                                  borderColor: '#1890ff',
+                                  borderWidth: 1,
+                                },
+                              ],
+                            }}
+                            options={{
+                              responsive: true,
+                              maintainAspectRatio: false,
+                              plugins: {
+                                legend: {
+                                  display: false,
+                                },
+                              },
+                              scales: {
+                                y: {
+                                  beginAtZero: true,
+                                  title: {
+                                    display: true,
+                                    text: '订单数',
+                                  },
+                                },
+                              },
+                            }}
+                          />
+                        ) : (
+                          <div style={{ textAlign: 'center', padding: '50px', color: '#8c8c8c' }}>
+                            暂无时段分析数据
+                          </div>
+                        )}
+                      </div>
+                    </Card>
+                  </Col>
+                </Row>
+
+                {/* 最近订单 */}
+                {selectedStore && (
+                  <Row gutter={[16, 16]}>
+                    <Col span={24}>
+                      <Card 
+                        title="最近订单" 
+                        extra={
+                          <Button 
+                            type="link" 
+                            onClick={() => setStatsModalVisible(true)}
+                            icon={<EyeOutlined />}
+                          >
+                            查看全部
+                          </Button>
+                        }
+                      >
+                        {dashboardData && dashboardData.recentOrders && dashboardData.recentOrders.length > 0 ? (
+                          <List
+                            dataSource={dashboardData?.recentOrders?.slice(0, 5) || []}
+                            renderItem={(order) => (
+                              <List.Item key={order.id}>
+                                <List.Item.Meta
+                                  avatar={<Avatar icon={<ShoppingCartOutlined />} />}
+                                  title={
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span>订单 #{order.order_code}</span>
+                                      <Tag color={order.pay_state === 2 ? 'green' : 'orange'}>
+                                        {order.pay_state === 2 ? '已支付' : '待支付'}
+                                      </Tag>
+                                    </div>
+                                  }
+                                  description={
+                                    <div>
+                                      <div>金额: ¥{(order.total_amount || 0).toFixed(2)}</div>
+                                      <div style={{ color: '#8c8c8c', fontSize: '12px' }}>
+                                        {dayjs(order.created_at).format('YYYY-MM-DD HH:mm:ss')}
+                                      </div>
+                                    </div>
+                                  }
+                                />
+                              </List.Item>
+                            )}
+                          />
+                        ) : (
+                          <div style={{ textAlign: 'center', padding: '30px', color: '#8c8c8c' }}>
+                            暂无最近订单数据
+                          </div>
+                        )}
+                      </Card>
+                    </Col>
+                  </Row>
+                )}
               </>
             ) : (
               <div style={{ textAlign: 'center', padding: '50px' }}>
@@ -960,6 +1383,7 @@ const Operations: React.FC = () => {
               <SalesPredictionChart 
                 storeId={parseInt(selectedStore)} 
                 onStoreChange={(storeId) => setSelectedStore(storeId.toString())}
+                selectedDate={dateRange?.[0] || dayjs()}
               />
             ) : (
               <div style={{ textAlign: 'center', padding: '50px' }}>
@@ -1025,14 +1449,14 @@ const Operations: React.FC = () => {
                         datasets: [
                           {
                             label: '订单数',
-                            data: hourlyStats.map(item => item.orderCount),
+                            data: hourlyStats.map(item => item.order_count || 0),
                             backgroundColor: 'rgba(24, 144, 255, 0.6)',
                             borderColor: '#1890ff',
                             borderWidth: 1,
                           },
                           {
                             label: '销售额',
-                            data: hourlyStats.map(item => item.totalSales),
+                            data: hourlyStats.map(item => item.total_amount || 0),
                             backgroundColor: 'rgba(82, 196, 26, 0.6)',
                             borderColor: '#52c41a',
                             borderWidth: 1,
@@ -1075,9 +1499,9 @@ const Operations: React.FC = () => {
                             callbacks: {
                               label: (context) => {
                                 if (context.datasetIndex === 0) {
-                                  return `订单数: ${context.parsed.y}`;
+                                  return `订单数: ${context.parsed.y || 0}`;
                                 } else {
-                                  return `销售额: ¥${context.parsed.y.toFixed(2)}`;
+                                  return `销售额: ¥${(context.parsed.y || 0).toFixed(2)}`;
                                 }
                               },
                             },
@@ -1090,10 +1514,10 @@ const Operations: React.FC = () => {
                   {currentStatsType === 'payment' && paymentStats.length > 0 && (
                     <Doughnut
                       data={{
-                        labels: paymentStats.map(item => item.payMode),
+                        labels: paymentStats.map(item => item.payment_method),
                         datasets: [
                           {
-                            data: paymentStats.map(item => item.totalSales),
+                            data: paymentStats.map(item => item.total_amount || 0),
                             backgroundColor: [
                               '#1890ff',
                               '#52c41a',
@@ -1118,9 +1542,9 @@ const Operations: React.FC = () => {
                               label: (context) => {
                                 const item = paymentStats[context.dataIndex];
                                 return [
-                                  `${context.label}: ¥${context.parsed.toFixed(2)}`,
-                                  `订单数: ${item.orderCount}`,
-                                  `客单价: ¥${item.avgSpend}`,
+                                  `${context.label}: ¥${(context.parsed || 0).toFixed(2)}`,
+                                  `订单数: ${item?.order_count || 0}`,
+                                  `客单价: ¥${(item?.avg_amount || 0).toFixed(2)}`,
                                 ];
                               },
                             },
@@ -1133,11 +1557,11 @@ const Operations: React.FC = () => {
                   {currentStatsType === 'product' && productStats.length > 0 && (
                     <Bar
                       data={{
-                        labels: productStats.map(item => item.goodsName),
+                        labels: productStats.map(item => item.product_name),
                         datasets: [
                           {
                             label: '销售额',
-                            data: productStats.map(item => item.totalSales),
+                            data: productStats.map(item => item.total_amount),
                             backgroundColor: 'rgba(24, 144, 255, 0.6)',
                             borderColor: '#1890ff',
                             borderWidth: 1,
@@ -1162,9 +1586,9 @@ const Operations: React.FC = () => {
                               label: (context) => {
                                 const item = productStats[context.dataIndex];
                                 return [
-                                  `销售额: ¥${context.parsed.y.toFixed(2)}`,
-                                  `订单数: ${item.orderCount}`,
-                                  `销量: ${item.totalQuantity}`,
+                                  `销售额: ¥${(context.parsed.y || 0).toFixed(2)}`,
+                                  `订单数: ${item?.order_count || 0}`,
+                                  `销量: ${item?.total_quantity || 0}`,
                                 ];
                               },
                             },
@@ -1187,9 +1611,9 @@ const Operations: React.FC = () => {
                       rowKey="hour"
                       columns={[
                         { title: '时段', dataIndex: 'hour', key: 'hour', render: (hour) => `${hour}:00` },
-                        { title: '订单数', dataIndex: 'orderCount', key: 'orderCount' },
-                        { title: '销售额', dataIndex: 'totalSales', key: 'totalSales', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
-                        { title: '客单价', dataIndex: 'avgSpend', key: 'avgSpend', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
+                        { title: '订单数', dataIndex: 'order_count', key: 'order_count' },
+                        { title: '销售额', dataIndex: 'total_amount', key: 'total_amount', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
+                        { title: '客单价', dataIndex: 'avg_amount', key: 'avg_amount', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
                         {
                           title: '操作',
                           key: 'action',
@@ -1215,12 +1639,12 @@ const Operations: React.FC = () => {
                   {currentStatsType === 'payment' && (
                     <Table
                       dataSource={paymentStats}
-                      rowKey="payMode"
+                      rowKey="payment_method"
                       columns={[
-                        { title: '支付方式', dataIndex: 'payMode', key: 'payMode' },
-                        { title: '订单数', dataIndex: 'orderCount', key: 'orderCount' },
-                        { title: '销售额', dataIndex: 'totalSales', key: 'totalSales', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
-                        { title: '客单价', dataIndex: 'avgSpend', key: 'avgSpend', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
+                        { title: '支付方式', dataIndex: 'payment_method', key: 'payment_method' },
+                        { title: '订单数', dataIndex: 'order_count', key: 'order_count' },
+                        { title: '销售额', dataIndex: 'total_amount', key: 'total_amount', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
+                        { title: '客单价', dataIndex: 'avg_amount', key: 'avg_amount', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
                         {
                           title: '操作',
                           key: 'action',
@@ -1230,7 +1654,7 @@ const Operations: React.FC = () => {
                               size="small"
                               onClick={() => {
                                 setStatsModalVisible(false);
-                                handleStatItemClick('payment', record.payMode);
+                                handleStatItemClick('payment', record.payment_method);
                               }}
                             >
                               查看订单
@@ -1246,18 +1670,18 @@ const Operations: React.FC = () => {
                   {currentStatsType === 'product' && (
                     <Table
                       dataSource={productStats}
-                      rowKey="goodsName"
+                      rowKey="product_name"
                       columns={[
                         { 
                           title: '商品名称', 
-                          dataIndex: 'goodsName', 
-                          key: 'goodsName',
-                          render: (text: any) => typeof text === 'string' ? text : (text?.name || text?.goodsName || '未知商品')
+                          dataIndex: 'product_name', 
+                          key: 'product_name',
+                          render: (text: any) => typeof text === 'string' ? text : (text?.name || text?.product_name || '未知商品')
                         },
-                        { title: '订单数', dataIndex: 'orderCount', key: 'orderCount' },
-                        { title: '销量', dataIndex: 'totalQuantity', key: 'totalQuantity' },
-                        { title: '销售额', dataIndex: 'totalSales', key: 'totalSales', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
-                        { title: '平均订单金额', dataIndex: 'avgOrderValue', key: 'avgOrderValue', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
+                        { title: '订单数', dataIndex: 'order_count', key: 'order_count' },
+                        { title: '销量', dataIndex: 'total_quantity', key: 'total_quantity' },
+                        { title: '销售额', dataIndex: 'total_amount', key: 'total_amount', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
+                        { title: '平均订单金额', dataIndex: 'avg_price', key: 'avg_price', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
                       ]}
                       pagination={false}
                       size="small"
@@ -1280,17 +1704,18 @@ const Operations: React.FC = () => {
       >
         <Table
           dataSource={orderList?.orders || []}
+          rowKey="id"
           columns={[
-            { title: '订单号', dataIndex: 'orderNo', key: 'orderNo' },
+            { title: '订单号', dataIndex: 'order_code', key: 'order_code' },
             { 
               title: '下单时间', 
-              dataIndex: 'recordTime', 
-              key: 'recordTime',
+              dataIndex: 'created_at', 
+              key: 'created_at',
               render: (time) => dayjs(time).format('YYYY-MM-DD HH:mm:ss')
             },
-            { title: '支付方式', dataIndex: 'payMode', key: 'payMode' },
-            { title: '订单金额', dataIndex: 'totalAmount', key: 'totalAmount', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
-            { title: '用户ID', dataIndex: 'openId', key: 'openId', render: (id) => id || '-' },
+            { title: '支付方式', dataIndex: 'payment_method', key: 'payment_method' },
+            { title: '订单金额', dataIndex: 'total_amount', key: 'total_amount', render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` },
+            { title: '用户ID', dataIndex: 'customer_id', key: 'customer_id', render: (id) => id || '-' },
             {
               title: '操作',
               key: 'action',
@@ -1342,17 +1767,17 @@ const Operations: React.FC = () => {
               style={{ marginBottom: '16px' }}
             >
               <Descriptions bordered column={2} size="small">
-                <Descriptions.Item label="订单号">{orderFullDetail.order.orderNo}</Descriptions.Item>
+                <Descriptions.Item label="订单号">{orderFullDetail.order.order_no}</Descriptions.Item>
                 <Descriptions.Item label="下单时间">
-                  {dayjs(orderFullDetail.order.recordTime).format('YYYY-MM-DD HH:mm:ss')}
+                  {dayjs(orderFullDetail.order.created_at).format('YYYY-MM-DD HH:mm:ss')}
                 </Descriptions.Item>
-                <Descriptions.Item label="支付方式">{orderFullDetail.order.payMode}</Descriptions.Item>
+                <Descriptions.Item label="支付方式">{orderFullDetail.order.pay_mode}</Descriptions.Item>
                 <Descriptions.Item label="支付状态">
                   <Badge 
-                    status={orderFullDetail.order.payState === 1 ? 'success' : orderFullDetail.order.payState === 2 ? 'processing' : 'default'} 
+                    status={orderFullDetail.order.pay_state === 1 ? 'success' : orderFullDetail.order.pay_state === 2 ? 'processing' : 'default'} 
                     text={
-                      orderFullDetail.order.payState === 1 ? '已支付' : 
-                      orderFullDetail.order.payState === 2 ? '支付中' : '未支付'
+                      orderFullDetail.order.pay_state === 1 ? '已支付' : 
+                      orderFullDetail.order.pay_state === 2 ? '支付中' : '未支付'
                     } 
                   />
                 </Descriptions.Item>
@@ -1362,10 +1787,10 @@ const Operations: React.FC = () => {
                 <Descriptions.Item label="其他金额">¥{orderFullDetail.order.total != null ? orderFullDetail.order.total.toFixed(2) : '0.00'}</Descriptions.Item>
                 <Descriptions.Item label="订单总金额" span={2}>
                   <Text strong style={{ fontSize: '16px', color: '#1890ff' }}>
-                    ¥{orderFullDetail.order.totalAmount != null ? orderFullDetail.order.totalAmount.toFixed(2) : '0.00'}
+                    ¥{orderFullDetail.order.total_amount != null ? orderFullDetail.order.total_amount.toFixed(2) : '0.00'}
                   </Text>
                 </Descriptions.Item>
-                <Descriptions.Item label="用户ID">{orderFullDetail.order.openId || '-'}</Descriptions.Item>
+                <Descriptions.Item label="用户ID">{orderFullDetail.order.customer_id || '-'}</Descriptions.Item>
                 <Descriptions.Item label="备注">{orderFullDetail.order.remark || '-'}</Descriptions.Item>
               </Descriptions>
             </Card>
@@ -1376,27 +1801,22 @@ const Operations: React.FC = () => {
                 <Space>
                   <BarChartOutlined />
                   订单商品详情
-                  <Tag color="blue">{orderFullDetail.goods.length} 件商品</Tag>
+                  <Tag color="blue">{orderFullDetail.items?.length || 0} 件商品</Tag>
                 </Space>
               } 
               size="small"
             >
               <Table
-                dataSource={orderFullDetail.goods}
+                dataSource={orderFullDetail.items || []}
                 rowKey="id"
                 columns={[
                   { 
                     title: '商品名称', 
-                    dataIndex: 'goodsName', 
-                    key: 'goodsName',
+                    dataIndex: 'product_name', 
+                    key: 'product_name',
                     render: (name, record) => (
                       <div>
-                        <div style={{ fontWeight: 'bold' }}>{typeof name === 'string' ? name : (name?.name || name?.goodsName || '未知商品')}</div>
-                        {record.goodsText && (
-                          <div style={{ fontSize: '12px', color: '#8c8c8c' }}>
-                            {record.goodsText}
-                          </div>
-                        )}
+                        <div style={{ fontWeight: 'bold' }}>{name || '未知商品'}</div>
                       </div>
                     )
                   },
@@ -1408,20 +1828,20 @@ const Operations: React.FC = () => {
                   },
                   { 
                     title: '数量', 
-                    dataIndex: 'goodsNumber', 
-                    key: 'goodsNumber',
+                    dataIndex: 'quantity', 
+                    key: 'quantity',
                     render: (number) => <Text strong>{number}</Text>
                   },
                   { 
                     title: '单价', 
-                    dataIndex: 'goodsPrice', 
-                    key: 'goodsPrice',
+                    dataIndex: 'price', 
+                    key: 'price',
                     render: (price) => `¥${price != null ? price.toFixed(2) : '0.00'}`
                   },
                   { 
                     title: '小计', 
-                    dataIndex: 'goodsTotal', 
-                    key: 'goodsTotal',
+                    dataIndex: 'total_price', 
+                    key: 'total_price',
                     render: (total) => <Text strong style={{ color: '#1890ff' }}>¥{total != null ? total.toFixed(2) : '0.00'}</Text>
                   },
                   { 
@@ -1443,14 +1863,7 @@ const Operations: React.FC = () => {
                     key: 'status',
                     render: (_, record) => (
                       <div>
-                        {record.isRefund === 1 ? (
-                          <Tag color="red">已退款</Tag>
-                        ) : (
-                          <Tag color="green">正常</Tag>
-                        )}
-                        {record.isPackage === 1 && (
-                          <Tag color="blue">套餐</Tag>
-                        )}
+                        <Tag color="green">正常</Tag>
                       </div>
                     )
                   },
@@ -1465,23 +1878,23 @@ const Operations: React.FC = () => {
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={1}>
                       <Text strong>
-                        {orderFullDetail.goods.reduce((sum, item) => sum + item.goodsNumber, 0)}
+                        {(orderFullDetail.items || []).reduce((sum, item) => sum + (item.quantity || 0), 0)}
                       </Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={2}>-</Table.Summary.Cell>
                     <Table.Summary.Cell index={3}>
                       <Text strong style={{ color: '#1890ff' }}>
-                        ¥{orderFullDetail.goods.reduce((sum, item) => sum + (item.goodsTotal || 0), 0).toFixed(2)}
+                        ¥{(orderFullDetail.items || []).reduce((sum, item) => sum + (item.total_price || 0), 0).toFixed(2)}
                       </Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={4}>
                       <Text type="danger">
-                        -¥{orderFullDetail.goods.reduce((sum, item) => sum + (item.discountAmount || 0), 0).toFixed(2)}
+                        -¥0.00
                       </Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={5}>
                       <Text strong style={{ color: '#52c41a' }}>
-                        ¥{orderFullDetail.goods.reduce((sum, item) => sum + (item.realIncomeAmount || item.goodsTotal || 0), 0).toFixed(2)}
+                        ¥{(orderFullDetail.items || []).reduce((sum, item) => sum + (item.total_price || 0), 0).toFixed(2)}
                       </Text>
                     </Table.Summary.Cell>
                     <Table.Summary.Cell index={6}>-</Table.Summary.Cell>
@@ -1491,6 +1904,161 @@ const Operations: React.FC = () => {
             </Card>
           </div>
         )}
+      </Modal>
+
+      {/* 门店订单详情模态框 */}
+      <Modal
+        title={
+          <Space>
+            <ShoppingCartOutlined />
+            {currentStoreName} - 订单详情
+          </Space>
+        }
+        open={storeOrdersVisible}
+        onCancel={() => setStoreOrdersVisible(false)}
+        width={1200}
+        footer={null}
+      >
+        <Table
+          dataSource={storeOrdersData}
+          rowKey="id"
+          columns={[
+            { title: '订单号', dataIndex: 'order_no', key: 'order_no', width: 150 },
+            { 
+              title: '下单时间', 
+              dataIndex: 'created_at', 
+              key: 'created_at',
+              width: 150,
+              render: (time) => dayjs(time).format('YYYY-MM-DD HH:mm:ss')
+            },
+            { title: '客户ID', dataIndex: 'customer_id', key: 'customer_id', width: 120 },
+            { title: '支付方式', dataIndex: 'pay_mode', key: 'pay_mode', width: 100 },
+            { 
+              title: '订单金额', 
+              dataIndex: 'total_amount', 
+              key: 'total_amount', 
+              width: 120,
+              render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` 
+            },
+            { 
+              title: '现金支付', 
+              dataIndex: 'cash', 
+              key: 'cash', 
+              width: 100,
+              render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` 
+            },
+            { 
+              title: 'VIP支付', 
+              dataIndex: 'vipAmount', 
+              key: 'vipAmount', 
+              width: 100,
+              render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` 
+            },
+            { 
+              title: '卡支付', 
+              dataIndex: 'cardAmount', 
+              key: 'cardAmount', 
+              width: 100,
+              render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` 
+            },
+            { 
+              title: '支付状态', 
+              dataIndex: 'pay_state', 
+              key: 'pay_state', 
+              width: 100,
+              render: (state) => (
+                <Tag color={state === 2 ? 'green' : 'orange'}>
+                  {state === 2 ? '已支付' : '待支付'}
+                </Tag>
+              )
+            },
+            { title: '备注', dataIndex: 'orderRemarks', key: 'orderRemarks', width: 150 },
+          ]}
+          pagination={{
+            pageSize: 20,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+          }}
+          size="small"
+          scroll={{ x: 1000 }}
+        />
+      </Modal>
+
+      {/* 门店客户详情模态框 */}
+      <Modal
+        title={
+          <Space>
+            <UserOutlined />
+            {currentStoreName} - 客户详情
+          </Space>
+        }
+        open={storeCustomersVisible}
+        onCancel={() => setStoreCustomersVisible(false)}
+        width={1000}
+        footer={null}
+      >
+        <Table
+          dataSource={storeCustomersData}
+          rowKey="customer_id"
+          columns={[
+            { title: '客户ID', dataIndex: 'customer_id', key: 'customer_id', width: 150 },
+            { title: '客户姓名', dataIndex: 'customer_name', key: 'customer_name', width: 120 },
+            { title: '手机号', dataIndex: 'phone', key: 'phone', width: 120 },
+            { title: '订单数', dataIndex: 'order_count', key: 'order_count', width: 100 },
+            { 
+              title: '总消费', 
+              dataIndex: 'total_spent', 
+              key: 'total_spent', 
+              width: 120,
+              render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` 
+            },
+            { 
+              title: '平均客单价', 
+              dataIndex: 'avg_order_value', 
+              key: 'avg_order_value', 
+              width: 120,
+              render: (value) => `¥${value != null ? value.toFixed(2) : '0.00'}` 
+            },
+            { 
+              title: '首次购买', 
+              dataIndex: 'first_order_date', 
+              key: 'first_order_date', 
+              width: 120,
+              render: (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-'
+            },
+            { 
+              title: '最后购买', 
+              dataIndex: 'last_order_date', 
+              key: 'last_order_date', 
+              width: 120,
+              render: (date) => date ? dayjs(date).format('YYYY-MM-DD') : '-'
+            },
+            { 
+              title: '客户类型', 
+              dataIndex: 'segment_name', 
+              key: 'segment_name', 
+              width: 100,
+              render: (segment) => (
+                <Tag color={
+                  segment === '核心客户' ? 'red' : 
+                  segment === '活跃客户' ? 'green' : 
+                  segment === '机会客户' ? 'blue' : 'default'
+                }>
+                  {segment}
+                </Tag>
+              )
+            },
+          ]}
+          pagination={{
+            pageSize: 20,
+            showSizeChanger: true,
+            showQuickJumper: true,
+            showTotal: (total, range) => `第 ${range[0]}-${range[1]} 条，共 ${total} 条`,
+          }}
+          size="small"
+          scroll={{ x: 800 }}
+        />
       </Modal>
 
       {/* 成功提示 */}

@@ -198,12 +198,26 @@ function calculatePredictionParameters(historyData: any[], recentData: any[], st
     };
   }
 
+  // 计算有效数据统计
+  const totalSales = historyData.reduce((sum, item) => sum + parseFloat(item.daily_sales || 0), 0);
+  const totalOrders = historyData.reduce((sum, item) => sum + parseInt(item.daily_orders || 0), 0);
+  
+  // 检查是否有有效的销售数据（总销售额大于0）
+  if (totalSales <= 0 || totalOrders <= 0) {
+    return {
+      factors: [],
+      weights: {},
+      baseValues: null,
+      hasInsufficientData: true
+    };
+  }
+
   const factors = [];
   const weights = {};
   
   // 1. 历史数据因子（必须有历史数据才能进行预测）
-  const avgSales = historyData.reduce((sum, item) => sum + parseFloat(item.daily_sales || 0), 0) / historyData.length;
-  const avgOrders = historyData.reduce((sum, item) => sum + parseInt(item.daily_orders || 0), 0) / historyData.length;
+  const avgSales = totalSales / historyData.length;
+  const avgOrders = totalOrders / historyData.length;
   const salesStdDev = calculateStandardDeviation(historyData.map(item => parseFloat(item.daily_sales || 0)));
   const ordersStdDev = calculateStandardDeviation(historyData.map(item => parseInt(item.daily_orders || 0)));
   
@@ -321,6 +335,28 @@ function generateDayPrediction(dateStr: string, dayOfWeek: number, dayIndex: num
     confidence *= 0.8; // 数据不足时降低置信度
   }
   
+  // 预测值合理性检查 - 更严格的限制
+  const maxReasonableMultiplier = 1.5; // 最大合理倍数降低到1.5倍
+  const historicalMax = Math.max(...historyData.map(item => parseFloat(item.daily_sales || 0)));
+  const historicalAvg = baseValues.avgSales;
+  
+  // 如果预测值超过历史最大值的1.5倍，进行限制
+  if (predictedSales > historicalMax * maxReasonableMultiplier) {
+    predictedSales = historicalMax * maxReasonableMultiplier;
+    confidence *= 0.5; // 大幅降低置信度
+  }
+  
+  // 如果预测值超过历史平均值的2倍，进行限制
+  if (predictedSales > historicalAvg * 2) {
+    predictedSales = historicalAvg * 2;
+    confidence *= 0.6; // 降低置信度
+  }
+  
+  // 确保预测值不会低于历史平均值的30%
+  if (predictedSales < historicalAvg * 0.3) {
+    predictedSales = historicalAvg * 0.3;
+  }
+  
   // 生成计算依据说明
   const calculationBasis = generateCalculationBasis(factors, weights, dayOfWeek, dayIndex, historyData);
   
@@ -398,40 +434,47 @@ function calculateSlope(values: number[]): number {
   return (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
 }
 
-// 计算门店特征因子
+// 计算门店特征因子 - 简化版本，避免过度放大
 function calculateStoreFactors(storeInfo: any) {
   let salesMultiplier = 1.0;
   let ordersMultiplier = 1.0;
   
-  // 门店状态影响
+  // 门店状态影响 - 进一步降低乘数
   switch (storeInfo.status) {
     case '营业中':
-      salesMultiplier *= 1.2;
-      ordersMultiplier *= 1.2;
+      salesMultiplier = 1.0;  // 营业中不进行放大
+      ordersMultiplier = 1.0;
       break;
     case '暂停营业':
-      salesMultiplier *= 0.3;
-      ordersMultiplier *= 0.3;
+      salesMultiplier = 0.2;  // 暂停营业大幅降低
+      ordersMultiplier = 0.2;
       break;
     case '装修中':
-      salesMultiplier *= 0.1;
-      ordersMultiplier *= 0.1;
+      salesMultiplier = 0.05; // 装修中几乎无销售
+      ordersMultiplier = 0.05;
       break;
   }
   
-  // 门店类型影响
+  // 门店类型影响 - 微调，避免大幅变化
   switch (storeInfo.store_type) {
     case '旗舰店':
-      salesMultiplier *= 1.5;
-      ordersMultiplier *= 1.5;
+      salesMultiplier *= 1.05;  // 仅5%的调整
+      ordersMultiplier *= 1.05;
       break;
     case '标准店':
-      salesMultiplier *= 1.0;
-      ordersMultiplier *= 1.0;
+      // 标准店保持基准值
       break;
     case '小型店':
-      salesMultiplier *= 0.7;
-      ordersMultiplier *= 0.7;
+      salesMultiplier *= 0.95;  // 仅5%的调整
+      ordersMultiplier *= 0.95;
+      break;
+    case '加盟店':
+      salesMultiplier *= 0.98;  // 微小调整
+      ordersMultiplier *= 0.98;
+      break;
+    case '直营店':
+      salesMultiplier *= 1.02;  // 微小调整
+      ordersMultiplier *= 1.02;
       break;
   }
   
@@ -578,6 +621,29 @@ router.get('/performance/:storeId', async (req: Request, res: Response) => {
       }
     });
 
+    // 获取历史销售数据用于计算目标销售额
+    const historyQuery = `
+      SELECT 
+        CAST(created_at AS DATE) as date,
+        SUM(total_amount) as daily_sales,
+        COUNT(*) as daily_orders
+      FROM orders 
+      WHERE store_id = :storeId 
+        AND delflag = 0
+        AND CAST(created_at AS DATE) >= DATEADD(day, -30, :targetDate)
+        AND CAST(created_at AS DATE) < :targetDate
+      GROUP BY CAST(created_at AS DATE)
+      ORDER BY date DESC
+    `;
+
+    const historyData = await sequelize.query(historyQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { 
+        storeId: storeId,
+        targetDate: targetDate
+      }
+    });
+
     // 获取最近7天趋势数据
     const trendsQuery = `
       SELECT 
@@ -601,68 +667,17 @@ router.get('/performance/:storeId', async (req: Request, res: Response) => {
       }
     });
 
-    // 检查数据量是否足够，如果不足则使用基于门店特征的默认值
+    // 检查数据量是否足够，如果不足则返回数据不足的错误
     let today, yesterday;
     
     if (!todayData || todayData.length === 0 || !(todayData[0] as any).total_amount_sales) {
-      // 没有真实数据时，基于门店特征生成合理的默认值
-      const storeInfo = storeResult[0] as any;
-      
-      // 根据门店状态和类型生成默认业绩数据
-      let baseSales = 800;
-      let baseOrders = 40;
-      let baseCustomers = 25;
-      
-      // 根据门店状态调整
-      if (storeInfo.status === '营业中') {
-        baseSales *= 1.2;
-        baseOrders *= 1.2;
-        baseCustomers *= 1.2;
-      } else if (storeInfo.status === '暂停营业') {
-        baseSales *= 0.3;
-        baseOrders *= 0.3;
-        baseCustomers *= 0.3;
-      }
-      
-      // 根据门店类型调整
-      if (storeInfo.store_type) {
-        switch (storeInfo.store_type) {
-          case '旗舰店':
-            baseSales *= 1.5;
-            baseOrders *= 1.5;
-            baseCustomers *= 1.5;
-            break;
-          case '标准店':
-            baseSales *= 1.0;
-            baseOrders *= 1.0;
-            baseCustomers *= 1.0;
-            break;
-          case '小型店':
-            baseSales *= 0.7;
-            baseOrders *= 0.7;
-            baseCustomers *= 0.7;
-            break;
-        }
-      }
-      
-      // 添加随机波动
-      const variation = (Math.random() - 0.5) * 0.3;
-      const salesVariation = (Math.random() - 0.5) * 0.3;
-      const ordersVariation = (Math.random() - 0.5) * 0.3;
-      
-      today = {
-        total_amount_sales: Math.round(baseSales * (1 + salesVariation)),
-        total_amount_orders: Math.round(baseOrders * (1 + ordersVariation)),
-        customer_count: Math.round(baseCustomers * (1 + variation)),
-        avg_order_value: Math.round((baseSales * (1 + salesVariation)) / (baseOrders * (1 + ordersVariation)) * 100) / 100
-      };
-      
-      // 昨日数据（稍微低一些）
-      yesterday = {
-        total_amount_sales: Math.round(today.total_amount_sales * 0.85),
-        total_amount_orders: Math.round(today.total_amount_orders * 0.9),
-        customer_count: Math.round(today.customer_count * 0.9)
-      };
+      // 没有真实数据时，直接返回数据不足的错误
+      return res.json({
+        success: false,
+        error: '数据不足',
+        message: '该门店当前没有销售数据，无法进行业绩分析。',
+        data: null
+      });
     } else {
       today = todayData[0] as any;
       yesterday = yesterdayData[0] as any;
@@ -683,8 +698,10 @@ router.get('/performance/:storeId', async (req: Request, res: Response) => {
     const ordersGrowthRate = yesterdayOrders > 0 ? 
       ((total_amountOrders - yesterdayOrders) / yesterdayOrders) * 100 : 0;
     
-    // 目标销售额（假设为10000）
-    const targetSales = 10000;
+    // 动态计算目标销售额：基于历史平均销售额的1.2倍，最低不低于500
+    const avgHistoricalSales = historyData.length > 0 ? 
+      historyData.reduce((sum, item: any) => sum + parseFloat(item.daily_sales || 0), 0) / historyData.length : 500;
+    const targetSales = Math.max(500, avgHistoricalSales * 1.2);
     const completionRate = (total_amountSales / targetSales) * 100;
 
     // 生成趋势数据
@@ -901,7 +918,7 @@ router.get('/comparison/:storeId', async (req: Request, res: Response) => {
     const currentData = await sequelize.query(currentQuery, {
       type: QueryTypes.SELECT,
       replacements: { 
-        storeId: storeId,
+        storeId: parseInt(storeId),
         currentStart: currentStartDate,
         currentEnd: currentEndDate
       }
@@ -923,7 +940,7 @@ router.get('/comparison/:storeId', async (req: Request, res: Response) => {
     const previousData = await sequelize.query(previousQuery, {
       type: QueryTypes.SELECT,
       replacements: { 
-        storeId: storeId,
+        storeId: parseInt(storeId),
         previousStart: previousStart.toISOString().split('T')[0],
         previousEnd: previousEnd.toISOString().split('T')[0]
       }
@@ -1096,5 +1113,344 @@ function generateHourlyBreakdown(dailySales: number, dailyOrders: number, dayOfW
   
   return hourlyData;
 }
+
+// 获取门店对比数据
+router.get('/store-comparison', async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        error: '请提供开始日期和结束日期'
+      });
+    }
+
+    // 获取所有门店的销售数据（包含城市信息）
+    const storeComparisonQuery = `
+      SELECT 
+        s.id as storeId,
+        s.store_name as storeName,
+        s.city,
+        s.district,
+        COALESCE(SUM(o.total_amount), 0) as sales,
+        COALESCE(COUNT(o.id), 0) as orders,
+        COALESCE(COUNT(DISTINCT o.customer_id), 0) as customers,
+        CASE 
+          WHEN COUNT(o.id) > 0 THEN COALESCE(SUM(o.total_amount), 0) / COUNT(o.id)
+          ELSE 0 
+        END as avgOrderValue
+      FROM stores s
+      LEFT JOIN orders o ON s.id = o.store_id 
+        AND o.delflag = 0
+        AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate
+      WHERE s.delflag = 0
+      GROUP BY s.id, s.store_name, s.city, s.district
+      ORDER BY sales DESC
+    `;
+
+    const storeComparisonResult = await sequelize.query(storeComparisonQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { startDate, endDate }
+    });
+
+    // 获取每个门店的商品品类数据
+    const categoryQuery = `
+      SELECT 
+        s.id as storeId,
+        s.store_name as storeName,
+        COALESCE(oi.product_name, '未知品类') as category,
+        COALESCE(SUM(oi.total_price), 0) as sales,
+        COALESCE(SUM(oi.quantity), 0) as orders
+      FROM stores s
+      LEFT JOIN orders o ON s.id = o.store_id 
+        AND o.delflag = 0
+        AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate
+      LEFT JOIN order_items oi ON o.id = oi.order_id
+      WHERE s.delflag = 0
+      GROUP BY s.id, s.store_name, oi.product_name
+      ORDER BY s.id, sales DESC
+    `;
+
+    const categoryResult = await sequelize.query(categoryQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { startDate, endDate }
+    });
+
+    // 合并数据
+    const storeData = (storeComparisonResult as any[]).map(store => {
+      const categories = (categoryResult as any[])
+        .filter(cat => cat.storeId === store.storeId)
+        .map(cat => ({
+          category: cat.category,
+          sales: parseFloat(cat.sales),
+          orders: parseInt(cat.orders)
+        }));
+
+      return {
+        storeId: store.storeId.toString(),
+        storeName: store.storeName,
+        city: store.city,
+        district: store.district,
+        sales: parseFloat(store.sales),
+        orders: parseInt(store.orders),
+        customers: parseInt(store.customers),
+        avgOrderValue: parseFloat(store.avgOrderValue),
+        productCategories: categories
+      };
+    });
+
+    res.json({
+      success: true,
+      data: storeData
+    });
+  } catch (error) {
+    console.error('获取门店对比数据失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '获取门店对比数据失败'
+    });
+  }
+});
+
+// 获取总体对比数据
+router.get('/overall-comparison', async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        error: '请提供开始日期和结束日期'
+      });
+    }
+
+    // 获取总体数据
+    const overallQuery = `
+      SELECT 
+        COALESCE(SUM(total_amount), 0) as totalSales,
+        COALESCE(COUNT(*), 0) as totalOrders,
+        COALESCE(COUNT(DISTINCT customer_id), 0) as totalCustomers,
+        CASE 
+          WHEN COUNT(*) > 0 THEN COALESCE(SUM(total_amount), 0) / COUNT(*)
+          ELSE 0 
+        END as avgOrderValue
+      FROM orders 
+      WHERE delflag = 0
+        AND CAST(created_at AS DATE) BETWEEN :startDate AND :endDate
+    `;
+
+    const overallResult = await sequelize.query(overallQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { startDate, endDate }
+    });
+
+    // 获取门店排名
+    const storeRankingQuery = `
+      SELECT 
+        s.id as storeId,
+        s.store_name as storeName,
+        COALESCE(SUM(o.total_amount), 0) as sales,
+        COALESCE(COUNT(o.id), 0) as orders,
+        COALESCE(COUNT(DISTINCT o.customer_id), 0) as customers,
+        CASE 
+          WHEN COUNT(o.id) > 0 THEN COALESCE(SUM(o.total_amount), 0) / COUNT(o.id)
+          ELSE 0 
+        END as avgOrderValue
+      FROM stores s
+      LEFT JOIN orders o ON s.id = o.store_id 
+        AND o.delflag = 0
+        AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate
+      WHERE s.delflag = 0
+      GROUP BY s.id, s.store_name
+      ORDER BY sales DESC
+      OFFSET 0 ROWS
+      FETCH NEXT 10 ROWS ONLY
+    `;
+
+    const storeRankingResult = await sequelize.query(storeRankingQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { startDate, endDate }
+    });
+
+    // 获取品类分布
+    const categoryDistributionQuery = `
+      SELECT 
+        COALESCE(oi.product_name, '未知品类') as category,
+        COALESCE(SUM(oi.total_price), 0) as sales
+      FROM orders o
+      LEFT JOIN order_items oi ON o.id = oi.order_id
+      WHERE o.delflag = 0
+        AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate
+      GROUP BY oi.product_name
+      ORDER BY sales DESC
+    `;
+
+    const categoryDistributionResult = await sequelize.query(categoryDistributionQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { startDate, endDate }
+    });
+
+    const totalSales = parseFloat((overallResult[0] as any).totalSales);
+    const categoryDistribution = (categoryDistributionResult as any[]).map(cat => ({
+      category: cat.category,
+      sales: parseFloat(cat.sales),
+      percentage: totalSales > 0 ? (parseFloat(cat.sales) / totalSales * 100) : 0
+    }));
+
+    const storeRankings = (storeRankingResult as any[]).map(store => ({
+      storeId: store.storeId.toString(),
+      storeName: store.storeName,
+      sales: parseFloat(store.sales),
+      orders: parseInt(store.orders),
+      customers: parseInt(store.customers),
+      avgOrderValue: parseFloat(store.avgOrderValue),
+      productCategories: []
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        totalSales: parseFloat((overallResult[0] as any).totalSales),
+        totalOrders: parseInt((overallResult[0] as any).totalOrders),
+        totalCustomers: parseInt((overallResult[0] as any).totalCustomers),
+        avgOrderValue: parseFloat((overallResult[0] as any).avgOrderValue),
+        storeRankings,
+        categoryDistribution
+      }
+    });
+  } catch (error) {
+    console.error('获取总体对比数据失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '获取总体对比数据失败'
+    });
+  }
+});
+
+// 获取门店与其他门店的对比数据
+router.get('/store-vs-others/:storeId', async (req: Request, res: Response) => {
+  try {
+    const { storeId } = req.params;
+    const { startDate, endDate } = req.query;
+    
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        error: '请提供开始日期和结束日期'
+      });
+    }
+
+    // 获取目标门店数据
+    const targetStoreQuery = `
+      SELECT 
+        s.id as storeId,
+        s.store_name as storeName,
+        COALESCE(SUM(o.total_amount), 0) as sales,
+        COALESCE(COUNT(o.id), 0) as orders,
+        COALESCE(COUNT(DISTINCT o.customer_id), 0) as customers,
+        CASE 
+          WHEN COUNT(o.id) > 0 THEN COALESCE(SUM(o.total_amount), 0) / COUNT(o.id)
+          ELSE 0 
+        END as avgOrderValue
+      FROM stores s
+      LEFT JOIN orders o ON s.id = o.store_id 
+        AND o.delflag = 0
+        AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate
+      WHERE s.id = :storeId AND s.delflag = 0
+      GROUP BY s.id, s.store_name
+    `;
+
+    const targetStoreResult = await sequelize.query(targetStoreQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { storeId, startDate, endDate }
+    });
+
+    // 获取其他门店数据
+    const otherStoresQuery = `
+      SELECT 
+        s.id as storeId,
+        s.store_name as storeName,
+        COALESCE(SUM(o.total_amount), 0) as sales,
+        COALESCE(COUNT(o.id), 0) as orders,
+        COALESCE(COUNT(DISTINCT o.customer_id), 0) as customers,
+        CASE 
+          WHEN COUNT(o.id) > 0 THEN COALESCE(SUM(o.total_amount), 0) / COUNT(o.id)
+          ELSE 0 
+        END as avgOrderValue
+      FROM stores s
+      LEFT JOIN orders o ON s.id = o.store_id 
+        AND o.delflag = 0
+        AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate
+      WHERE s.id != :storeId AND s.delflag = 0
+      GROUP BY s.id, s.store_name
+      ORDER BY sales DESC
+      OFFSET 0 ROWS
+      FETCH NEXT 10 ROWS ONLY
+    `;
+
+    const otherStoresResult = await sequelize.query(otherStoresQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { storeId, startDate, endDate }
+    });
+
+    // 获取总体数据
+    const overallQuery = `
+      SELECT 
+        COALESCE(SUM(total_amount), 0) as totalSales,
+        COALESCE(COUNT(*), 0) as totalOrders,
+        COALESCE(COUNT(DISTINCT customer_id), 0) as totalCustomers,
+        CASE 
+          WHEN COUNT(*) > 0 THEN COALESCE(SUM(total_amount), 0) / COUNT(*)
+          ELSE 0 
+        END as avgOrderValue
+      FROM orders 
+      WHERE delflag = 0
+        AND CAST(created_at AS DATE) BETWEEN :startDate AND :endDate
+    `;
+
+    const overallResult = await sequelize.query(overallQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { startDate, endDate }
+    });
+
+    const targetStore = targetStoreResult[0] as any;
+    const otherStores = (otherStoresResult as any[]).map(store => ({
+      storeId: store.storeId.toString(),
+      storeName: store.storeName,
+      sales: parseFloat(store.sales),
+      orders: parseInt(store.orders),
+      customers: parseInt(store.customers),
+      avgOrderValue: parseFloat(store.avgOrderValue)
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        targetStore: {
+          storeId: targetStore.storeId.toString(),
+          storeName: targetStore.storeName,
+          sales: parseFloat(targetStore.sales),
+          orders: parseInt(targetStore.orders),
+          customers: parseInt(targetStore.customers),
+          avgOrderValue: parseFloat(targetStore.avgOrderValue)
+        },
+        otherStores,
+        overall: {
+          totalSales: parseFloat((overallResult[0] as any).totalSales),
+          totalOrders: parseInt((overallResult[0] as any).totalOrders),
+          totalCustomers: parseInt((overallResult[0] as any).totalCustomers),
+          avgOrderValue: parseFloat((overallResult[0] as any).avgOrderValue)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('获取门店对比数据失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '获取门店对比数据失败'
+    });
+  }
+});
 
 export default router;

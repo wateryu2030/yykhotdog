@@ -18,7 +18,7 @@ import {
   Typography,
   Collapse
 } from 'antd';
-import { Line, Bar } from 'react-chartjs-2';
+import { Line, Bar, Scatter, Radar } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -40,7 +40,10 @@ import {
   BarChartOutlined,
   EyeOutlined,
   LineChartOutlined,
-  PieChartOutlined
+  PieChartOutlined,
+  AreaChartOutlined,
+  DotChartOutlined,
+  RadarChartOutlined
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { api } from '../config/api';
@@ -90,6 +93,7 @@ const isCacheValid = (timestamp: number) => {
 interface SalesPredictionProps {
   storeId?: number;
   onStoreChange?: (storeId: number) => void;
+  selectedDate?: dayjs.Dayjs; // 从父组件传入的主日期
 }
 
 // 视图类型
@@ -198,14 +202,16 @@ interface PerformanceMetrics {
   accuracyRate?: number;
 }
 
-const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStoreChange }) => {
+const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStoreChange, selectedDate: parentSelectedDate }) => {
   // 状态管理
   const [loading, setLoading] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [viewType, setViewType] = useState<ViewType>('daily');
   const [displayMode, setDisplayMode] = useState<'chart' | 'table'>('chart'); // 新增：显示模式
-  const [selectedDate, setSelectedDate] = useState(dayjs());
-  const [baseDate, setBaseDate] = useState(dayjs()); // 预测基准日
+  const [chartType, setChartType] = useState<'line' | 'bar' | 'area' | 'scatter'>('line'); // 新增：图表类型
+  // 使用父组件传入的日期，如果没有则使用当前日期
+  const selectedDate = parentSelectedDate || dayjs();
+  const baseDate = selectedDate; // 简化：使用相同的日期作为基准日
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
     dayjs().startOf('week'),
     dayjs().endOf('week')
@@ -292,8 +298,8 @@ const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStore
 
       // 检查业绩分析数据是否成功
       if (!performanceResponse.data.success) {
-        // 如果是因为数据量不足，使用默认值而不是抛出错误
-        if (performanceResponse.data.error === '数据量不足') {
+        // 如果是因为数据不足，使用默认值而不是抛出错误
+        if (performanceResponse.data.error === '数据不足' || performanceResponse.data.error === '数据量不足') {
           console.warn('业绩分析数据不足，使用默认值:', performanceResponse.data.message);
           // 使用默认的业绩数据
           performanceResponse.data = {
@@ -495,20 +501,60 @@ const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStore
       }
     }
 
+    // 根据视图类型计算预测数据
+    let totalPredictedSales = 0;
+    let totalPredictedOrders = 0;
+    let avgConfidence = 0;
+    
+    if (viewType === 'daily') {
+      // 日视图：使用当天的预测数据
+      const todayPrediction = predictions.find((p: any) => p.date === selectedDateObj.format('YYYY-MM-DD'));
+      totalPredictedSales = todayPrediction?.predictedSales || 0;
+      totalPredictedOrders = Math.round(todayPrediction?.predictedOrders || 0);
+      avgConfidence = todayPrediction?.confidence || 0;
+    } else if (viewType === 'weekly') {
+      // 周视图：计算当周7天的总和
+      // 由于API返回的是7天数据，我们直接使用所有数据作为周数据
+      totalPredictedSales = predictions.reduce((sum: number, p: any) => sum + (p.predictedSales || 0), 0);
+      totalPredictedOrders = Math.round(predictions.reduce((sum: number, p: any) => sum + (p.predictedOrders || 0), 0));
+      avgConfidence = predictions.length > 0 ? 
+        predictions.reduce((sum: number, p: any) => sum + (p.confidence || 0), 0) / predictions.length : 0;
+    } else if (viewType === 'monthly') {
+      // 月视图：由于API只返回7天数据，我们按比例估算月度数据
+      // 假设一个月30天，基于7天数据估算整月数据
+      const monthMultiplier = 30 / 7; // 约4.3倍
+      
+      totalPredictedSales = predictions.reduce((sum: number, p: any) => sum + (p.predictedSales || 0), 0) * monthMultiplier;
+      totalPredictedOrders = Math.round(predictions.reduce((sum: number, p: any) => sum + (p.predictedOrders || 0), 0) * monthMultiplier);
+      avgConfidence = predictions.length > 0 ? 
+        predictions.reduce((sum: number, p: any) => sum + (p.confidence || 0), 0) / predictions.length : 0;
+    }
+    
+    // 计算更合理的性能指标
+    const actualSales = actualData?.data?.kpis?.sales || 0;
+    const targetSales = performance?.metrics?.targetSales || totalPredictedSales * 1.2; // 目标设为预测值的120%
+    
+    // 达成率：实际销售额 / 目标销售额
+    const achievementRate = targetSales > 0 ? (actualSales / targetSales) * 100 : 0;
+    
+    // 预测准确率：基于历史预测准确性，这里使用置信度作为代理
+    const accuracyRate = avgConfidence * 100;
+
     return {
       salesData,
       predictionData: {
-        totalSales: predictions.reduce((sum: number, p: any) => sum + (p.predictedSales || 0), 0),
-        totalOrders: predictions.reduce((sum: number, p: any) => sum + (p.predictedOrders || 0), 0),
-        confidence: predictions.length > 0 ? predictions.reduce((sum: number, p: any) => sum + (p.confidence || 0), 0) / predictions.length : 0,
+        totalSales: totalPredictedSales,
+        totalOrders: totalPredictedOrders,
+        confidence: avgConfidence,
         factors: predictions.length > 0 ? predictions[0].factors || [] : [],
-        hourlyBreakdown: [],
+        hourlyBreakdown: viewType === 'daily' ? 
+          (predictions.find((p: any) => p.date === selectedDateObj.format('YYYY-MM-DD'))?.hourlyBreakdown || []) : [],
         metadata: predictionData?.metadata || null
       },
       performanceMetrics: {
-        totalSales: performance?.metrics?.totalSales || 0,
-        targetSales: performance?.metrics?.targetSales || 0,
-        completionRate: performance?.metrics?.completionRate || 0,
+        totalSales: actualSales,
+        targetSales: targetSales,
+        completionRate: achievementRate / 100, // 转换为0-1范围
         growthRate: performance?.metrics?.growthRate || 0,
         customerCount: performance?.metrics?.customerCount || 0,
         avgOrderValue: performance?.metrics?.avgOrderValue || 0,
@@ -518,11 +564,10 @@ const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStore
         trendDirection: ((performance?.metrics?.growthRate || 0) > 0 ? 'up' : 
                         (performance?.metrics?.growthRate || 0) < 0 ? 'down' : 'stable') as 'up' | 'down' | 'stable',
         trendPercentage: Math.abs(performance?.metrics?.growthRate || 0) * 100,
-        // 使用completionRate作为achievementRate
-        achievementRate: (performance?.metrics?.completionRate || 0) * 100,
-        // 计算预测准确率（基于置信度）
-        accuracyRate: predictions.length > 0 ? 
-          predictions.reduce((sum: number, p: any) => sum + (p.confidence || 0), 0) / predictions.length * 100 : 0
+        // 使用计算出的达成率
+        achievementRate: Math.round(achievementRate),
+        // 使用计算出的预测准确率
+        accuracyRate: Math.round(accuracyRate)
       }
     };
   };
@@ -746,6 +791,70 @@ const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStore
     }
   };
 
+  // 根据图表类型渲染不同的图表组件
+  const renderChart = (data: any, options: any) => {
+    const commonOptions = {
+      ...options,
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        ...options.plugins,
+        legend: {
+          position: 'top' as const,
+          ...options.plugins?.legend,
+        },
+      },
+    };
+
+    switch (chartType) {
+      case 'line':
+        return <Line data={data} options={commonOptions} />;
+      case 'bar':
+        return <Bar data={data} options={commonOptions} />;
+      case 'area':
+        // 面积图使用Line组件，但设置fill: true
+        const areaData = {
+          ...data,
+          datasets: data.datasets.map((dataset: any) => ({
+            ...dataset,
+            fill: true,
+            tension: 0.4,
+          })),
+        };
+        return <Line data={areaData} options={commonOptions} />;
+      case 'scatter':
+        // 散点图使用Line组件，但设置pointRadius较大
+        const scatterData = {
+          ...data,
+          datasets: data.datasets.map((dataset: any) => ({
+            ...dataset,
+            showLine: false,
+            pointRadius: 6,
+            pointHoverRadius: 8,
+          })),
+        };
+        return <Line data={scatterData} options={commonOptions} />;
+      default:
+        return <Line data={data} options={commonOptions} />;
+    }
+  };
+
+  // 获取图表类型对应的图标
+  const getChartTypeIcon = (type: string) => {
+    switch (type) {
+      case 'line':
+        return <LineChartOutlined />;
+      case 'bar':
+        return <BarChartOutlined />;
+      case 'area':
+        return <AreaChartOutlined />;
+      case 'scatter':
+        return <DotChartOutlined />;
+      default:
+        return <LineChartOutlined />;
+    }
+  };
+
 
   // 重新预测功能
   const handleRegeneratePredictions = async () => {
@@ -828,46 +937,44 @@ const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStore
                   数据列表
                 </Button>
               </Space.Compact>
+              {displayMode === 'chart' && (
+                <>
+                  <Divider type="vertical" />
+                  <Text>图表类型：</Text>
+                  <Space.Compact>
+                    <Button
+                      type={chartType === 'line' ? 'primary' : 'default'}
+                      icon={<LineChartOutlined />}
+                      onClick={() => setChartType('line')}
+                      title="折线图"
+                    />
+                    <Button
+                      type={chartType === 'bar' ? 'primary' : 'default'}
+                      icon={<BarChartOutlined />}
+                      onClick={() => setChartType('bar')}
+                      title="柱状图"
+                    />
+                    <Button
+                      type={chartType === 'area' ? 'primary' : 'default'}
+                      icon={<AreaChartOutlined />}
+                      onClick={() => setChartType('area')}
+                      title="面积图"
+                    />
+                    <Button
+                      type={chartType === 'scatter' ? 'primary' : 'default'}
+                      icon={<DotChartOutlined />}
+                      onClick={() => setChartType('scatter')}
+                      title="散点图"
+                    />
+                  </Space.Compact>
+                </>
+              )}
             </Space>
           </Col>
           <Col>
-            <Space direction="vertical" size="small">
-              <div>
-                <label style={{ fontSize: '12px', color: '#666', marginRight: '8px' }}>预测基准日:</label>
-                <DatePicker
-                  value={baseDate}
-                  onChange={(date) => setBaseDate(date || dayjs())}
-                  format="YYYY-MM-DD"
-                  placeholder="选择基准日"
-                  size="small"
-                />
-              </div>
-              {viewType === 'daily' && (
-                <DatePicker
-                  value={selectedDate}
-                  onChange={(date) => setSelectedDate(date || dayjs())}
-                  format="YYYY-MM-DD"
-                  placeholder="选择日期"
-                />
-              )}
-              {viewType === 'weekly' && (
-                <DatePicker.RangePicker
-                  value={dateRange}
-                  onChange={(dates) => dates && setDateRange(dates as [dayjs.Dayjs, dayjs.Dayjs])}
-                  format="YYYY-MM-DD"
-                  placeholder={['开始日期', '结束日期']}
-                />
-              )}
-              {viewType === 'monthly' && (
-                <DatePicker
-                  value={selectedDate}
-                  onChange={(date) => setSelectedDate(date || dayjs())}
-                  format="YYYY-MM"
-                  picker="month"
-                  placeholder="选择月份"
-                />
-              )}
-            </Space>
+            <div style={{ fontSize: '12px', color: '#666' }}>
+              预测日期: {selectedDate.format('YYYY-MM-DD')}
+            </div>
           </Col>
           <Col>
             <Space>
@@ -924,24 +1031,24 @@ const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStore
             <Col xs={24} sm={12} lg={6}>
               <Card>
                 <Statistic
-                  title="预测总销售额"
+                  title={`预测总销售额${viewType === 'daily' ? '' : viewType === 'weekly' ? '(周)' : '(月)'}`}
                   value={predictionData?.totalSales || 0}
                   precision={2}
                   prefix="¥"
                   valueStyle={{ color: '#52c41a' }}
                 />
                 <Progress
-                  percent={Math.round(predictionData?.confidence || 0)}
+                  percent={Math.round((predictionData?.confidence || 0) * 100)}
                   size="small"
                   status="active"
                 />
-                <Text type="secondary">置信度: {Math.round(predictionData?.confidence || 0)}%</Text>
+                <Text type="secondary">置信度: {Math.round((predictionData?.confidence || 0) * 100)}%</Text>
               </Card>
             </Col>
             <Col xs={24} sm={12} lg={6}>
               <Card>
                 <Statistic
-                  title="预测订单数"
+                  title={`预测订单数${viewType === 'daily' ? '' : viewType === 'weekly' ? '(周)' : '(月)'}`}
                   value={predictionData?.totalOrders || 0}
                   valueStyle={{ color: '#1890ff' }}
                 />
@@ -956,7 +1063,7 @@ const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStore
             <Col xs={24} sm={12} lg={6}>
               <Card>
                 <Statistic
-                  title="达成率"
+                  title={`达成率${viewType === 'daily' ? '' : viewType === 'weekly' ? '(周)' : '(月)'}`}
                   value={Math.round(performanceMetrics?.achievementRate || 0)}
                   suffix="%"
                   valueStyle={{ color: '#faad14' }}
@@ -971,7 +1078,7 @@ const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStore
             <Col xs={24} sm={12} lg={6}>
               <Card>
                 <Statistic
-                  title="预测准确率"
+                  title={`预测准确率${viewType === 'daily' ? '' : viewType === 'weekly' ? '(周)' : '(月)'}`}
                   value={Math.round(performanceMetrics?.accuracyRate || 0)}
                   suffix="%"
                   valueStyle={{ color: '#722ed1' }}
@@ -991,65 +1098,30 @@ const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStore
               // 图表视图
               chartData ? (
                 <div style={{ height: '400px' }}>
-                  {viewType === 'daily' ? (
-                    <Line
-                      data={chartData}
-                      options={{
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'top' as const,
-          },
-          title: {
-            display: true,
-                              text: '24小时销售趋势',
-                            },
-                          },
-        scales: {
-          y: {
-            beginAtZero: true,
-            title: {
-              display: true,
-              text: '销售额 (¥)',
-            },
-          },
-          x: {
-            title: {
-              display: true,
-                                text: '时间',
-            },
-          },
-        },
-                      }}
-                    />
-                  ) : (
-                      <Bar
-                        data={chartData}
-                        options={{
-                          responsive: true,
-                          maintainAspectRatio: false,
-                          plugins: {
-                            legend: {
-                              position: 'top' as const,
-                            },
-                            title: {
-                              display: true,
-                              text: viewType === 'weekly' ? '周销售趋势' : '月销售趋势',
-                            },
-                          },
-                          scales: {
-                            y: {
-                              beginAtZero: true,
-                              title: {
-                                display: true,
-                                text: '销售额 (¥)',
-                              },
-                            },
-                          },
-                        }}
-                      />
-                    )}
+                  {renderChart(chartData, {
+                    plugins: {
+                      title: {
+                        display: true,
+                        text: viewType === 'daily' ? '24小时销售趋势' : 
+                              viewType === 'weekly' ? '周销售趋势' : '月销售趋势',
+                      },
+                    },
+                    scales: {
+                      y: {
+                        beginAtZero: true,
+                        title: {
+                          display: true,
+                          text: '销售额 (¥)',
+                        },
+                      },
+                      x: {
+                        title: {
+                          display: true,
+                          text: viewType === 'daily' ? '时间' : '日期',
+                        },
+                      },
+                    },
+                  })}
                 </div>
               ) : (
                 <Alert
@@ -1225,87 +1297,31 @@ const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStore
             </Row>
           </Card>
 
-          {/* 计算依据详情 */}
+          {/* 简化计算依据 */}
           {salesData.length > 0 && salesData[0].calculationBasis && (
-            <Card title="详细计算依据" style={{ marginTop: '20px' }}>
-              <Collapse 
-                items={salesData.filter(item => item.calculationBasis).map((item, index) => ({
-                  key: index,
-                  label: `${dayjs(item.date).format('YYYY-MM-DD')} (${['周日', '周一', '周二', '周三', '周四', '周五', '周六'][new Date(item.date).getDay()]})`,
-                  children: (
-                    <>
-                      <Row gutter={[16, 16]}>
-                        <Col xs={24} lg={12}>
-                          <Card size="small" title="数据质量">
-                            <div style={{ marginBottom: '8px' }}>
-                              <Text strong>历史数据天数：</Text>
-                              <Text>{item.calculationBasis!.dataSource.historicalDays}天</Text>
-                            </div>
-                            <div style={{ marginBottom: '8px' }}>
-                              <Text strong>数据质量：</Text>
-                              <Tag color={item.calculationBasis!.dataSource.dataQuality === '高' ? 'green' : item.calculationBasis!.dataSource.dataQuality === '中' ? 'orange' : 'red'}>
-                                {item.calculationBasis!.dataSource.dataQuality}
-                              </Tag>
-                            </div>
-                            <div>
-                              <Text strong>最后数据日期：</Text>
-                              <Text>{item.calculationBasis!.dataSource.lastDataDate || '无'}</Text>
-                            </div>
-                          </Card>
-                        </Col>
-                        <Col xs={24} lg={12}>
-                          <Card size="small" title="算法信息">
-                            <div style={{ marginBottom: '8px' }}>
-                              <Text strong>算法名称：</Text>
-                              <Text>{item.calculationBasis!.algorithm.name}</Text>
-                            </div>
-                            <div style={{ marginBottom: '8px' }}>
-                              <Text strong>算法版本：</Text>
-                              <Text>{item.calculationBasis!.algorithm.version}</Text>
-                            </div>
-                            <div>
-                              <Text strong>算法描述：</Text>
-                              <Text style={{ fontSize: '12px' }}>{item.calculationBasis!.algorithm.description}</Text>
-                            </div>
-                          </Card>
-                        </Col>
-                      </Row>
-                      <Divider />
-                      <Row gutter={[16, 16]}>
-                        <Col xs={24} lg={12}>
-                          <Card size="small" title="预测因子权重">
-                            {item.calculationBasis!.factors.map((factor: any, factorIndex: number) => (
-                              <div key={factorIndex} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <div>
-                                  <Text strong>{factor.name}</Text>
-                                  <div style={{ fontSize: '12px', color: '#666' }}>{factor.description}</div>
-                                </div>
-                                <Tag color="blue">{factor.impact}</Tag>
-                              </div>
-                            ))}
-                          </Card>
-                        </Col>
-                        <Col xs={24} lg={12}>
-                          <Card size="small" title="调整因子">
-                            <div style={{ marginBottom: '8px' }}>
-                              <Text strong>时间衰减：</Text>
-                              <Text style={{ fontSize: '12px' }}>{item.calculationBasis!.adjustments.timeDecay}</Text>
-                            </div>
-                            <div style={{ marginBottom: '8px' }}>
-                              <Text strong>星期调整：</Text>
-                              <Text style={{ fontSize: '12px' }}>{item.calculationBasis!.adjustments.dayOfWeek}</Text>
-                            </div>
-                            <div>
-                              <Text strong>综合置信度：</Text>
-                              <Text style={{ fontSize: '12px' }}>{item.calculationBasis!.adjustments.confidence}</Text>
-                            </div>
-                          </Card>
-                        </Col>
-                      </Row>
-                    </>
-                  )
-                }))}
-              />
+            <Card title="数据质量信息" style={{ marginTop: '20px' }}>
+              <Row gutter={[16, 16]}>
+                <Col xs={24} sm={8}>
+                  <div style={{ textAlign: 'center', padding: '16px' }}>
+                    <Text strong style={{ fontSize: '16px' }}>{salesData[0].calculationBasis!.dataSource.historicalDays}天</Text>
+                    <div style={{ fontSize: '12px', color: '#666' }}>历史数据</div>
+                  </div>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <div style={{ textAlign: 'center', padding: '16px' }}>
+                    <Tag color={salesData[0].calculationBasis!.dataSource.dataQuality === '高' ? 'green' : salesData[0].calculationBasis!.dataSource.dataQuality === '中' ? 'orange' : 'red'} style={{ fontSize: '14px' }}>
+                      {salesData[0].calculationBasis!.dataSource.dataQuality}质量
+                    </Tag>
+                    <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>数据质量</div>
+                  </div>
+                </Col>
+                <Col xs={24} sm={8}>
+                  <div style={{ textAlign: 'center', padding: '16px' }}>
+                    <Text strong style={{ fontSize: '16px' }}>{((salesData[0].confidence || 0) * 100).toFixed(0)}%</Text>
+                    <div style={{ fontSize: '12px', color: '#666' }}>预测置信度</div>
+                  </div>
+                </Col>
+              </Row>
             </Card>
           )}
         </>

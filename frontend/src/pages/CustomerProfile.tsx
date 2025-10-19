@@ -34,10 +34,13 @@ const timeStr = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes()
 const dateStr = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日`;
 
 interface CustomerProfileData {
-  customer_count: number;
-  order_count: number;
+  total_stores: number;
+  operating_stores: number;
   total_sales: number;
-  avg_order_value: number;
+  total_orders: number;
+  totalCustomers: number;
+  activeCustomers: number;
+  avgOrderValue: number;
   segments: Array<{
     segment_name: string;
     customer_count: number;
@@ -60,8 +63,14 @@ interface City {
 }
 
 interface Store {
-  name: string;
   id: number;
+  store_name: string;
+  store_code: string;
+  city: string;
+  district: string;
+  province: string;
+  status: string;
+  store_type: string;
 }
 
 const CustomerProfile: React.FC = () => {
@@ -90,6 +99,7 @@ const CustomerProfile: React.FC = () => {
   const [ordersPagination, setOrdersPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [orderDetail, setOrderDetail] = useState<any>(null);
   const [orderDetailLoading, setOrderDetailLoading] = useState(false);
+  
 
   // 2. 获取客户订单
   const fetchCustomerOrders = async (customerId: string, page = 1, pageSize = 10) => {
@@ -413,7 +423,7 @@ const CustomerProfile: React.FC = () => {
     return <div style={{ textAlign: 'center', padding: '50px' }}>加载中...</div>;
   }
 
-  if (!data || !data.customer_count) {
+  if (!data || !data.totalCustomers) {
     return <div style={{ textAlign: 'center', padding: '50px' }}>暂无数据</div>;
   }
 
@@ -486,7 +496,7 @@ const CustomerProfile: React.FC = () => {
             >
               {stores.map(store => (
                 <Option key={store.id} value={store.id.toString()}>
-                  {store.name}
+                  {store.store_name}
                 </Option>
               ))}
             </Select>
@@ -563,8 +573,8 @@ const CustomerProfile: React.FC = () => {
             <strong style={{ color: '#1890ff' }}>当前过滤条件:</strong>
             {selectedCity && <Tag color="blue" style={{ marginLeft: '8px', borderRadius: '4px' }}>城市: {selectedCity}</Tag>}
             {selectedShopId && <Tag color="green" style={{ marginLeft: '8px', borderRadius: '4px' }}>门店: {(() => {
-              const foundStore = stores.find(s => s.id.toString() === selectedShopId);
-              return foundStore ? foundStore.name : selectedShopId;
+              const foundStore = stores?.find(s => s.id.toString() === selectedShopId);
+              return foundStore ? foundStore.store_name : selectedShopId;
             })()}</Tag>}
             {dateRange && (
               <Tag color="orange" style={{ marginLeft: '8px', borderRadius: '4px' }}>
@@ -603,7 +613,7 @@ const CustomerProfile: React.FC = () => {
                   </Button>
                 </span>
               }
-              value={data.customer_count}
+              value={data.totalCustomers}
               prefix={<UserOutlined style={{ fontSize: '24px' }} />}
               valueStyle={{ color: '#52c41a', fontSize: '28px', fontWeight: 'bold' }}
             />
@@ -622,7 +632,7 @@ const CustomerProfile: React.FC = () => {
           >
             <Statistic
               title={<span style={{ fontSize: '16px', fontWeight: '500' }}>活跃客户数</span>}
-              value={data.customer_count}
+              value={data.totalCustomers}
               prefix={<ShoppingCartOutlined style={{ fontSize: '24px' }} />}
               valueStyle={{ color: '#1890ff', fontSize: '28px', fontWeight: 'bold' }}
             />
@@ -648,7 +658,7 @@ const CustomerProfile: React.FC = () => {
                   </Tooltip>
                 </Space>
               }
-              value={data.avg_order_value}
+              value={data.avgOrderValue}
               precision={2}
               suffix="元"
               prefix={<DollarOutlined style={{ fontSize: '24px' }} />}
@@ -671,18 +681,18 @@ const CustomerProfile: React.FC = () => {
               title={
                 <Space>
                   <span style={{ fontSize: '16px', fontWeight: '500' }}>客户生命周期价值</span>
-                  <Tooltip title={`客户生命周期价值（CLV）衡量客户在整个合作周期内为企业带来的总价值。\n\n计算方法：\nCLV = 平均每次购买金额 × 年购买频率 × 3年\n\n年购买频率 = 总订单数 ÷ 客户活跃天数 × 365天\n\n本系统基于各类客户的实际购买行为计算3年生命周期价值，\n核心客户：${data.segments.find(s => s.segment_name === '核心客户')?.lifetime_value_3y?.toFixed(2) || '0'}元\n活跃客户：${data.segments.find(s => s.segment_name === '活跃客户')?.lifetime_value_3y?.toFixed(2) || '0'}元\n机会客户：${data.segments.find(s => s.segment_name === '机会客户')?.lifetime_value_3y?.toFixed(2) || '0'}元\n沉睡/新客户：${data.segments.find(s => s.segment_name === '沉睡/新客户')?.lifetime_value_3y?.toFixed(2) || '0'}元`}> 
+                  <Tooltip title={`客户生命周期价值（CLV）衡量客户在整个合作周期内为企业带来的总价值。\n\n计算方法：\nCLV = 平均每次购买金额 × 年购买频率 × 3年\n\n年购买频率 = 总订单数 ÷ 客户活跃天数 × 365天\n\n本系统基于各类客户的实际购买行为计算3年生命周期价值，\n核心客户：${(data.segments?.find(s => s.segment_name === '核心客户')?.lifetime_value_3y || 0).toFixed(2)}元\n活跃客户：${(data.segments?.find(s => s.segment_name === '活跃客户')?.lifetime_value_3y || 0).toFixed(2)}元\n机会客户：${(data.segments?.find(s => s.segment_name === '机会客户')?.lifetime_value_3y || 0).toFixed(2)}元\n沉睡/新客户：${(data.segments?.find(s => s.segment_name === '沉睡/新客户')?.lifetime_value_3y || 0).toFixed(2)}元`}> 
                     <InfoCircleOutlined style={{ color: '#1890ff' }} />
                   </Tooltip>
                 </Space>
               }
               value={(() => {
                 // 计算加权平均的生命周期价值
-                const totalCustomers = data.segments.reduce((sum, segment) => sum + segment.customer_count, 0);
-                const weightedCLV = data.segments.reduce((sum, segment) => {
+                const totalCustomers = data.totalCustomers || 0;
+                const weightedCLV = data.segments?.reduce((sum, segment) => {
                   return sum + (segment.lifetime_value_3y || 0) * (segment.customer_count / totalCustomers);
-                }, 0);
-                return weightedCLV || data.avg_order_value;
+                }, 0) || 0;
+                return weightedCLV || data.avgOrderValue;
               })()}
               precision={2}
               suffix="元"
@@ -718,7 +728,7 @@ const CustomerProfile: React.FC = () => {
           >
             <div style={{ marginBottom: '16px' }}>
               <Table
-                dataSource={data.segments.map((item, idx) => ({ ...item, key: item.segment_name || idx }))}
+                dataSource={data.segments?.map((item, idx) => ({ ...item, key: item.segment_name || idx })) || []}
                 columns={[
                   {
                     title: '客户分层',
@@ -743,7 +753,7 @@ const CustomerProfile: React.FC = () => {
                   {
                     title: '占比',
                     key: 'percentage',
-                    render: (_, record) => `${((record.customer_count / data.customer_count) * 100).toFixed(1)}%`
+                    render: (_, record) => `${((record.customer_count / data.totalCustomers) * 100).toFixed(1)}%`
                   },
                   {
                     title: '平均消费',
@@ -827,11 +837,11 @@ const CustomerProfile: React.FC = () => {
           >
             <Bar
               data={{
-                labels: data.timeDistribution.map(item => `${item.hour}:00`),
+                labels: data.timeDistribution?.map(item => `${item.hour}:00`) || [],
                 datasets: [
                   {
                     label: '订单数量',
-                    data: data.timeDistribution.map(item => item.order_count),
+                    data: data.timeDistribution?.map(item => item.order_count) || [],
                     backgroundColor: 'rgba(54, 162, 235, 0.7)',
                     borderColor: 'rgba(54, 162, 235, 1)',
                     borderWidth: 2,
@@ -840,7 +850,7 @@ const CustomerProfile: React.FC = () => {
                   },
                   {
                     label: '客户数量',
-                    data: data.timeDistribution.map(item => item.customer_count),
+                    data: data.timeDistribution?.map(item => item.customer_count) || [],
                     backgroundColor: 'rgba(255, 99, 132, 0.7)',
                     borderColor: 'rgba(255, 99, 132, 1)',
                     borderWidth: 2,
@@ -923,6 +933,7 @@ const CustomerProfile: React.FC = () => {
           </Card>
         </Col>
       </Row>
+
 
       {/* 客户分层详情模态框 */}
       <Modal

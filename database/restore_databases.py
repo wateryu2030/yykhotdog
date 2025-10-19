@@ -117,9 +117,9 @@ def main():
     script_dir = Path(__file__).parent
     backup_dir = script_dir
     
-    # 备份文件路径
-    cyrg_backup = backup_dir / "cyrg_backup_2025_09_09_000004_9004235.bak"
-    zhkj_backup = backup_dir / "zhkj_backup_2025_09_09_000002_6761311.bak"
+    # 备份文件路径 - 使用最新的备份文件
+    cyrg_backup = backup_dir / "cyrg2025-10-15.bak"
+    zhkj_backup = backup_dir / "zhkj2025-10-15.bak"
     
     # 连接数据库
     connection = get_connection()

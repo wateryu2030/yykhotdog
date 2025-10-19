@@ -4,7 +4,7 @@ import { QueryTypes } from 'sequelize';
 
 const router = Router();
 
-// 获取门店列表
+// 获取门店列表 - 优化版本
 router.get('/stores', async (req: Request, res: Response) => {
   try {
     const { province, city, district, status, page = 1, limit = 20 } = req.query;
@@ -31,6 +31,7 @@ router.get('/stores', async (req: Request, res: Response) => {
 
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
 
+    // 包含统计数据的查询
     const query = `
       SELECT 
         s.id,
@@ -57,20 +58,9 @@ router.get('/stores', async (req: Request, res: Response) => {
         s.created_at,
         s.updated_at,
         COUNT(DISTINCT CASE WHEN o.pay_state = 2 THEN o.id END) as total_orders,
+        COUNT(DISTINCT CASE WHEN o.pay_state = 2 THEN o.customer_id END) as total_customers,
         SUM(CASE WHEN o.pay_state = 2 THEN o.total_amount ELSE 0 END) as total_revenue,
-        AVG(CASE WHEN o.pay_state = 2 THEN o.total_amount END) as avg_order_value,
-        MIN(CASE WHEN o.pay_state = 2 THEN o.created_at END) as first_order_date,
-        MAX(CASE WHEN o.pay_state = 2 THEN o.created_at END) as last_order_date,
-        CASE 
-          WHEN MIN(CASE WHEN o.pay_state = 2 THEN o.created_at END) IS NOT NULL 
-          THEN DATEDIFF(day, MIN(CASE WHEN o.pay_state = 2 THEN o.created_at END), 
-                        COALESCE(MAX(CASE WHEN o.pay_state = 2 THEN o.created_at END), GETDATE())) + 1
-          ELSE 0
-        END as operating_days,
-        COUNT(DISTINCT CASE WHEN o.pay_state = 2 AND CAST(o.created_at AS DATE) >= CAST(DATEADD(day, -30, GETDATE()) AS DATE) THEN o.id END) as recent_orders_30d,
-        SUM(CASE WHEN o.pay_state = 2 AND CAST(o.created_at AS DATE) >= CAST(DATEADD(day, -30, GETDATE()) AS DATE) THEN o.total_amount ELSE 0 END) as recent_revenue_30d,
-        COUNT(DISTINCT CASE WHEN o.pay_state = 2 AND CAST(o.created_at AS DATE) >= CAST(DATEADD(day, -7, GETDATE()) AS DATE) THEN o.id END) as recent_orders_7d,
-        SUM(CASE WHEN o.pay_state = 2 AND CAST(o.created_at AS DATE) >= CAST(DATEADD(day, -7, GETDATE()) AS DATE) THEN o.total_amount ELSE 0 END) as recent_revenue_7d
+        AVG(CASE WHEN o.pay_state = 2 THEN o.total_amount END) as avg_order_value
       FROM stores s
       LEFT JOIN orders o ON s.id = o.store_id AND o.delflag = 0
       ${whereClause}
@@ -154,6 +144,7 @@ router.get('/stores/:id', async (req: Request, res: Response) => {
         s.updated_at,
         s.delflag,
         COUNT(DISTINCT CASE WHEN o.pay_state = 2 THEN o.id END) as total_orders,
+        COUNT(DISTINCT CASE WHEN o.pay_state = 2 THEN o.customer_id END) as total_customers,
         SUM(CASE WHEN o.pay_state = 2 THEN o.total_amount ELSE 0 END) as total_revenue,
         AVG(CASE WHEN o.pay_state = 2 THEN o.total_amount END) as avg_order_value,
         MIN(CASE WHEN o.pay_state = 2 THEN o.created_at END) as first_order_date,
@@ -204,7 +195,127 @@ router.get('/stores/:id', async (req: Request, res: Response) => {
   }
 });
 
-// 获取门店订单明细
+// 获取单个订单详情 (必须在 /orders/:storeId 之前)
+router.get('/orders/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    
+    const orderQuery = `
+      SELECT 
+        o.*
+      FROM orders o
+      WHERE o.id = :orderId AND o.delflag = 0
+    `;
+    
+    const result = await sequelize.query(orderQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { orderId: id }
+    });
+    
+    if (result.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: '订单不存在'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: result[0]
+    });
+  } catch (error) {
+    console.error('获取订单详情失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '获取订单详情失败',
+      details: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+// 获取门店订单明细 (按storeId)
+router.get('/orders/store/:storeId', async (req: Request, res: Response) => {
+  try {
+    const { storeId } = req.params;
+    const { page = 1, limit = 20, startDate, endDate, timeType = 'today' } = req.query;
+    
+    let dateCondition = '';
+    const params: any = { storeId: parseInt(storeId) };
+    
+    if (startDate && endDate) {
+      dateCondition = 'AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate';
+      params.startDate = startDate;
+      params.endDate = endDate;
+    } else if (timeType === 'today') {
+      dateCondition = 'AND CAST(o.created_at AS DATE) = CAST(GETDATE() AS DATE)';
+    } else if (timeType === 'yesterday') {
+      dateCondition = 'AND CAST(o.created_at AS DATE) = CAST(DATEADD(day, -1, GETDATE()) AS DATE)';
+    }
+    
+    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+    
+    const query = `
+      SELECT 
+        o.id,
+        o.order_no as order_code,
+        o.total_amount,
+        o.pay_mode as payment_method,
+        o.pay_state,
+        o.customer_id,
+        o.created_at
+      FROM orders o
+      WHERE o.store_id = :storeId 
+        AND o.delflag = 0
+        ${dateCondition}
+      ORDER BY o.created_at DESC
+      OFFSET :offset ROWS
+      FETCH NEXT :limit ROWS ONLY
+    `;
+    
+    // 获取总数
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM orders o
+      WHERE o.store_id = :storeId 
+        AND o.delflag = 0
+        ${dateCondition}
+    `;
+    
+    const orders = await sequelize.query(query, {
+      type: QueryTypes.SELECT,
+      replacements: { ...params, offset, limit: parseInt(limit as string) }
+    });
+    
+    const countResult = await sequelize.query(countQuery, {
+      type: QueryTypes.SELECT,
+      replacements: params
+    });
+    
+    const total = (countResult[0] as any).total;
+
+    res.json({
+      success: true,
+      data: {
+        orders,
+        pagination: {
+          total,
+          page: parseInt(page as string),
+          limit: parseInt(limit as string),
+          totalPages: Math.ceil(total / parseInt(limit as string))
+        }
+      }
+    });
+  } catch (error) {
+    console.error('获取门店订单列表失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '获取门店订单列表失败',
+      details: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+// 获取门店订单明细 (按storeId - 兼容性路由)
 router.get('/stores/:id/orders', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -288,15 +399,109 @@ router.get('/stores/:id/orders', async (req: Request, res: Response) => {
   }
 });
 
-// 获取单个订单详情
-router.get('/orders/:id', async (req: Request, res: Response) => {
+// 获取门店客户明细
+router.get('/stores/:id/customers', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 20, startDate, endDate } = req.query;
+    
+    const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
+    
+    // 构建日期过滤条件
+    let dateCondition = '';
+    const params: any = { 
+      storeId: parseInt(id),
+      offset,
+      limit: parseInt(limit as string)
+    };
+    
+    if (startDate && endDate) {
+      dateCondition = 'AND o.created_at BETWEEN :startDate AND :endDate';
+      params.startDate = startDate;
+      params.endDate = endDate;
+    }
+    
+    // 获取门店客户数据
+    const query = `
+      SELECT 
+        o.customer_id,
+        c.customer_name,
+        c.phone,
+        COUNT(*) as order_count,
+        SUM(o.total_amount) as total_spent,
+        AVG(o.total_amount) as avg_order_value,
+        MIN(o.created_at) as first_order_date,
+        MAX(o.created_at) as last_order_date,
+        CASE 
+          WHEN SUM(o.total_amount) >= 1000 AND COUNT(*) >= 10 THEN N'核心客户'
+          WHEN SUM(o.total_amount) >= 500 AND COUNT(*) >= 5 THEN N'活跃客户'
+          WHEN SUM(o.total_amount) >= 100 AND COUNT(*) >= 2 THEN N'机会客户'
+          ELSE N'沉睡/新客户'
+        END as segment_name
+      FROM orders o
+      LEFT JOIN customers c ON o.customer_id = c.customer_id
+      WHERE o.store_id = :storeId 
+        AND o.delflag = 0
+        ${dateCondition}
+      GROUP BY o.customer_id, c.customer_name, c.phone
+      ORDER BY total_spent DESC
+      OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY
+    `;
+    
+    // 获取总数
+    const countQuery = `
+      SELECT COUNT(DISTINCT o.customer_id) as total
+      FROM orders o
+      WHERE o.store_id = :storeId 
+        AND o.delflag = 0
+        ${dateCondition}
+    `;
+    
+    const customers = await sequelize.query(query, {
+      type: QueryTypes.SELECT,
+      replacements: params
+    });
+    
+    const countResult = await sequelize.query(countQuery, {
+      type: QueryTypes.SELECT,
+      replacements: params
+    });
+    
+    const total = (countResult[0] as any).total;
+    
+    res.json({
+      success: true,
+      data: customers,
+      pagination: {
+        total,
+        page: parseInt(page as string),
+        limit: parseInt(limit as string),
+        totalPages: Math.ceil(total / parseInt(limit as string))
+      }
+    });
+  } catch (error) {
+    console.error('获取门店客户明细失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '获取门店客户明细失败',
+      details: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+// 获取订单详情 (带门店信息)
+router.get('/orders/detail/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     
     const orderQuery = `
       SELECT 
-        o.*
+        o.*,
+        s.store_name,
+        s.city,
+        s.district
       FROM orders o
+      LEFT JOIN stores s ON o.store_id = s.id
       WHERE o.id = :orderId AND o.delflag = 0
     `;
     
@@ -321,6 +526,72 @@ router.get('/orders/:id', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: '获取订单详情失败',
+      details: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+// 获取订单完整详情 (包含商品信息)
+router.get('/orders/full-detail/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    
+    // 获取订单基本信息
+    const orderQuery = `
+      SELECT 
+        o.*,
+        s.store_name,
+        s.city,
+        s.district
+      FROM orders o
+      LEFT JOIN stores s ON o.store_id = s.id
+      WHERE o.id = :orderId AND o.delflag = 0
+    `;
+    
+    // 获取订单商品明细
+    const itemsQuery = `
+      SELECT 
+        oi.id,
+        oi.product_id,
+        oi.product_name,
+        oi.quantity,
+        oi.price,
+        oi.total_price,
+        oi.created_at
+      FROM order_items oi
+      WHERE oi.order_id = :orderId AND oi.delflag = 0
+      ORDER BY oi.id
+    `;
+    
+    const orderResult = await sequelize.query(orderQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { orderId: id }
+    });
+    
+    const itemsResult = await sequelize.query(itemsQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { orderId: id }
+    });
+    
+    if (orderResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: '订单不存在'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        order: orderResult[0],
+        items: itemsResult
+      }
+    });
+  } catch (error) {
+    console.error('获取订单完整详情失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '获取订单完整详情失败',
       details: error instanceof Error ? error.message : '未知错误'
     });
   }
@@ -592,7 +863,7 @@ router.get('/payment-stats/:storeId', async (req: Request, res: Response) => {
     
     const query = `
       SELECT 
-        o.payment_method,
+        o.pay_mode as payment_method,
         COUNT(*) as order_count,
         SUM(o.total_amount) as total_amount,
         AVG(o.total_amount) as avg_amount
@@ -600,7 +871,7 @@ router.get('/payment-stats/:storeId', async (req: Request, res: Response) => {
       WHERE o.store_id = :storeId 
         AND o.delflag = 0
         ${dateCondition}
-      GROUP BY o.payment_method
+      GROUP BY o.pay_mode
       ORDER BY total_amount DESC
     `;
     
@@ -665,7 +936,7 @@ router.get('/product-stats/:storeId', async (req: Request, res: Response) => {
         oi.product_name,
         SUM(oi.quantity) as total_quantity,
         SUM(oi.total_price) as total_amount,
-        AVG(oi.unit_price) as avg_price
+        AVG(oi.price) as avg_price
       FROM order_items oi
       INNER JOIN orders o ON oi.order_id = o.id
       WHERE o.store_id = :storeId 
@@ -695,148 +966,72 @@ router.get('/product-stats/:storeId', async (req: Request, res: Response) => {
   }
 });
 
-// 获取运营概览汇总数据（所有门店）
+// 获取运营概览汇总数据（所有门店）- 超简版本
 router.get('/overview', async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate, timeType = 'today', city } = req.query;
+    const { timeType = 'today' } = req.query;
     
-    let dateCondition = '';
-    let cityCondition = '';
-    const params: any = {};
-    
-    // 构建日期条件
-    if (startDate && endDate) {
-      dateCondition = 'AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate';
-      params.startDate = startDate;
-      params.endDate = endDate;
-    } else if (timeType === 'today') {
-      dateCondition = 'AND CAST(o.created_at AS DATE) = CAST(GETDATE() AS DATE)';
-    } else if (timeType === 'yesterday') {
-      dateCondition = 'AND CAST(o.created_at AS DATE) = CAST(DATEADD(day, -1, GETDATE()) AS DATE)';
+    // 使用固定日期避免复杂计算
+    let targetDate = new Date();
+    if (timeType === 'yesterday') {
+      targetDate.setDate(targetDate.getDate() - 1);
     }
+    const dateStr = targetDate.toISOString().split('T')[0];
     
-    // 构建城市条件
-    if (city) {
-      cityCondition = 'AND s.city = :city';
-      params.city = city;
-    }
-    
-    // 获取今日销售汇总
-    const todaySalesQuery = `
-      SELECT 
+    // 超简查询 - 只查询最基本的统计数据
+    const basicStatsQuery = `
+      SELECT TOP 1
         COUNT(*) as total_orders,
-        SUM(o.total_amount) as total_sales,
-        AVG(o.total_amount) as avg_order_value,
-        COUNT(DISTINCT o.customer_id) as total_customers,
-        COUNT(DISTINCT o.store_id) as active_stores
-      FROM orders o
-      LEFT JOIN stores s ON o.store_id = s.id
-      WHERE o.delflag = 0 
-        AND o.pay_state = 2
-        ${dateCondition}
-        ${cityCondition}
+        ISNULL(SUM(total_amount), 0) as total_sales,
+        ISNULL(AVG(total_amount), 0) as avg_order_value
+      FROM orders 
+      WHERE delflag = 0 
+        AND pay_state = 2
+        AND CAST(created_at AS DATE) = :targetDate
     `;
     
-    // 获取营业中门店总数（不受日期限制）
-    const operatingStoresQuery = `
-      SELECT 
-        COUNT(DISTINCT s.id) as operating_stores,
-        COUNT(DISTINCT s.city) as operating_cities
-      FROM stores s
-      WHERE s.delflag = 0 
-        AND s.status = N'营业中'
-        ${cityCondition}
+    // 门店统计查询 - 简化
+    const storeStatsQuery = `
+      SELECT TOP 1
+        COUNT(*) as operating_stores
+      FROM stores 
+      WHERE delflag = 0 
+        AND status = N'营业中'
     `;
     
-    // 获取昨日对比数据
-    let yesterdayCondition = '';
-    if (timeType === 'today') {
-      yesterdayCondition = 'AND CAST(o.created_at AS DATE) = CAST(DATEADD(day, -1, GETDATE()) AS DATE)';
-    }
-    
-    const yesterdaySalesQuery = `
-      SELECT 
-        COUNT(*) as yesterday_orders,
-        SUM(o.total_amount) as yesterday_sales,
-        AVG(o.total_amount) as yesterday_avg_order_value,
-        COUNT(DISTINCT o.customer_id) as yesterday_customers
-      FROM orders o
-      LEFT JOIN stores s ON o.store_id = s.id
-      WHERE o.delflag = 0 
-        AND o.pay_state = 2
-        ${yesterdayCondition}
-        ${cityCondition}
-    `;
-    
-    const todayResult = await sequelize.query(todaySalesQuery, {
+    // 执行查询
+    const todayResult = await sequelize.query(basicStatsQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: { targetDate: dateStr }
     });
     
-    const yesterdayResult = await sequelize.query(yesterdaySalesQuery, {
-      type: QueryTypes.SELECT,
-      replacements: params
-    });
-    
-    const operatingStoresResult = await sequelize.query(operatingStoresQuery, {
-      type: QueryTypes.SELECT,
-      replacements: params
+    const storeResult = await sequelize.query(storeStatsQuery, {
+      type: QueryTypes.SELECT
     });
     
     const today = todayResult[0] as any;
-    const yesterday = yesterdayResult[0] as any;
-    const operatingStores = operatingStoresResult[0] as any;
+    const operatingStores = storeResult[0] as any;
     
-    // 计算趋势
-    const calculateTrend = (current: number, previous: number) => {
-      if (previous === 0) return current > 0 ? 100 : 0;
-      return ((current - previous) / previous) * 100;
-    };
-    
-    const salesTrend = calculateTrend(today?.total_sales || 0, yesterday?.yesterday_sales || 0);
-    const ordersTrend = calculateTrend(today?.total_orders || 0, yesterday?.yesterday_orders || 0);
-    const avgOrderTrend = calculateTrend(today?.avg_order_value || 0, yesterday?.yesterday_avg_order_value || 0);
-    const customersTrend = calculateTrend(today?.total_customers || 0, yesterday?.yesterday_customers || 0);
-    
+    // 返回极简的数据结构
     const overviewData = {
       kpis: {
-        // 今日销售额
         sales: today?.total_sales || 0,
-        salesTrend: {
-          vsYesterday: salesTrend
-        },
-        // 今日客单价
-        avgOrderValue: today?.avg_order_value || 0,
-        avgOrderTrend: {
-          vsYesterday: avgOrderTrend
-        },
-        // 总用户数
-        totalCustomers: today?.total_customers || 0,
-        customersTrend: {
-          vsYesterday: customersTrend
-        },
-        // 总订单数
         totalOrders: today?.total_orders || 0,
-        ordersTrend: {
-          vsYesterday: ordersTrend
-        },
-        // 活跃门店数（今天有订单的门店）
-        activeStores: today?.active_stores || 0,
-        // 营业中门店总数
+        avgOrderValue: today?.avg_order_value || 0,
+        totalCustomers: 0, // 简化，不查询客户数
         operatingStores: operatingStores?.operating_stores || 0,
-        // 营业中城市数
-        operatingCities: operatingStores?.operating_cities || 0
+        operatingCities: 0 // 简化，不查询城市数
       },
-        summary: {
-          dateRange: {
-            start: startDate || (timeType === 'today' ? new Date().toISOString().split('T')[0] : ''),
-            end: endDate || (timeType === 'today' ? new Date().toISOString().split('T')[0] : ''),
-            type: timeType
-          },
-          filters: {
-            city: city || '全部'
-          }
+      summary: {
+        dateRange: {
+          start: dateStr,
+          end: dateStr,
+          type: timeType
+        },
+        filters: {
+          city: '全部'
         }
+      }
     };
     
     res.json({
@@ -896,10 +1091,9 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
         s.morning_time,
         s.night_time,
         s.passenger_flow,
-        s.establish_time,
-        s.opening_time,
         s.is_self,
-        s.is_close
+        s.created_at,
+        s.updated_at
       FROM stores s
       WHERE s.id = :storeId AND s.delflag = 0
     `;
@@ -916,7 +1110,7 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
       });
     }
     
-    // 获取销售数据
+    // 获取销售数据 - 移除pay_state过滤，统计所有订单
     const salesQuery = `
       SELECT 
         COUNT(*) as total_orders,
@@ -926,7 +1120,6 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
       FROM orders o
       WHERE o.store_id = :storeId 
         AND o.delflag = 0
-        AND o.pay_state = 2
         ${dateCondition}
     `;
     
@@ -955,7 +1148,6 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
       FROM orders o
       WHERE o.store_id = :storeId 
         AND o.delflag = 0
-        AND o.pay_state = 2
         ${yesterdayCondition}
     `;
     
@@ -977,11 +1169,33 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
     const ordersTrend = calculateTrend(sales?.total_orders || 0, yesterday?.yesterday_orders || 0);
     const avgOrderTrend = calculateTrend(sales?.avg_order_value || 0, yesterday?.yesterday_avg_order_value || 0);
     
+    // 获取最近订单
+    const recentOrdersQuery = `
+      SELECT TOP 5
+        o.id,
+        o.order_no as order_code,
+        o.total_amount,
+        o.pay_mode as payment_method,
+        o.pay_state,
+        o.customer_id,
+        o.created_at
+      FROM orders o
+      WHERE o.store_id = :storeId 
+        AND o.delflag = 0
+        ${dateCondition}
+      ORDER BY o.created_at DESC
+    `;
+    
+    const recentOrdersResult = await sequelize.query(recentOrdersQuery, {
+      type: QueryTypes.SELECT,
+      replacements: params
+    });
+    
     const dashboardData = {
       store: storeResult[0],
       kpis: {
         sales: sales?.total_sales || 0,
-        target: 10000, // 设置一个默认目标值
+        target: Math.max(500, (sales?.total_sales || 0) * 1.2), // 基于实际销售额动态设置目标
         totalSales: sales?.total_sales || 0,
         totalSalesTrend: {
           vsYesterday: salesTrend
@@ -1007,7 +1221,8 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
         hourlyStats: [],
         paymentStats: [],
         productStats: []
-      }
+      },
+      recentOrders: recentOrdersResult || []
     };
     
     res.json({

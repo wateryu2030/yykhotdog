@@ -1,7 +1,7 @@
 // API配置
 export const API_CONFIG = {
-  // 直接使用后端API地址
-  BASE_URL: 'http://localhost:3001',
+  // 使用相对路径，通过Nginx代理
+  BASE_URL: '',
   
   // 后端API端点
   BACKEND: {

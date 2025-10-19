@@ -47,7 +47,7 @@ const StoreOpening: React.FC = () => {
   const fetchStores = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/customer-profile/stores');
+      const response = await api.get('/operations/stores');
       if (response.data.success) {
         const storesData = response.data.data;
         setStores(storesData);
@@ -80,6 +80,21 @@ const StoreOpening: React.FC = () => {
       console.error('获取门店详情失败:', error);
       message.error('获取门店详情失败');
     }
+  };
+
+  // 编辑门店
+  const handleEditStore = (record: any) => {
+    setSelectedStore(record);
+    form.setFieldsValue({
+      store_name: record.store_name,
+      store_type: record.store_type,
+      city: record.city,
+      address: record.address,
+      director: record.director,
+      director_phone: record.director_phone,
+      status: record.status
+    });
+    setIsModalVisible(true);
   };
 
   // 获取门店订单列表
@@ -240,7 +255,7 @@ const StoreOpening: React.FC = () => {
       render: (_: any, record: any) => (
         <Space size="middle">
           <Button type="link" onClick={() => handleViewDetail(record)}>查看详情</Button>
-          <Button type="link">编辑</Button>
+          <Button type="link" onClick={() => handleEditStore(record)}>编辑</Button>
         </Space>
       ),
     },

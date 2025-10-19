@@ -182,19 +182,19 @@ const Dashboard: React.FC = () => {
       
       // 获取仪表盘摘要数据
       const selectedDate = currentDate.format('YYYY-MM-DD');
-      const summaryResponse = await fetch(`http://localhost:3001/api/customer-profile/dashboard-summary?date=${selectedDate}`);
+      const summaryResponse = await fetch(`/api/customer-profile/dashboard-summary?date=${selectedDate}`);
       const summaryData = await summaryResponse.json();
       
       // 获取运营概览数据（包含运营城市数量）
-      const overviewResponse = await fetch('http://localhost:3001/api/operations/overview');
+      const overviewResponse = await fetch('/api/operations/overview');
       const overviewData = await overviewResponse.json();
       
       // 获取城市列表
-      const citiesResponse = await fetch('http://localhost:3001/api/customer-profile/cities');
+      const citiesResponse = await fetch('/api/customer-profile/cities');
       const citiesData = await citiesResponse.json();
       
       // 获取区域统计信息
-      const regionStatsResponse = await fetch('http://localhost:3001/api/region/statistics');
+      const regionStatsResponse = await fetch('/api/region/statistics');
       const regionStatsData = await regionStatsResponse.json();
       
       if (!summaryData.success || !overviewData.success || !citiesData.success || !regionStatsData.success) {
@@ -297,7 +297,7 @@ const Dashboard: React.FC = () => {
   // 获取运营城市详情
   const fetchOperatingCities = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/operations/stores');
+      const response = await fetch('/api/operations/stores');
       const data = await response.json();
       if (data.success) {
         // 按城市分组统计
@@ -330,7 +330,7 @@ const Dashboard: React.FC = () => {
   // 获取运营店铺详情
   const fetchOperatingStores = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/operations/stores?status=营业中');
+      const response = await fetch('/api/operations/stores?status=营业中');
       const data = await response.json();
       if (data.success) {
         setOperatingStoresData(data.data);
@@ -343,7 +343,7 @@ const Dashboard: React.FC = () => {
   // 获取城市销售趋势数据
   const fetchCitySalesTrend = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/operations/city-sales-trend');
+      const response = await fetch('/api/operations/city-sales-trend');
       const data = await response.json();
       if (data.success) {
         setCitySalesTrendData(data.data);
@@ -356,7 +356,7 @@ const Dashboard: React.FC = () => {
   // 获取商品销售趋势数据
   const fetchProductSalesTrend = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/operations/product-sales-trend');
+      const response = await fetch('/api/operations/product-sales-trend');
       const data = await response.json();
       if (data.success) {
         setProductSalesTrendData(data.data);
@@ -370,7 +370,7 @@ const Dashboard: React.FC = () => {
   const fetchRealTimeStats = async () => {
     try {
       const selectedDate = currentDate.format('YYYY-MM-DD');
-      const response = await fetch(`http://localhost:3001/api/operations/real-time-stats?date=${selectedDate}`);
+      const response = await fetch(`/api/operations/real-time-stats?date=${selectedDate}`);
       const data = await response.json();
       if (data.success) {
         setRealTimeStats(data.data);
@@ -383,7 +383,7 @@ const Dashboard: React.FC = () => {
   // 获取热门商品数据
   const fetchTopProducts = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/operations/top-products?limit=8');
+      const response = await fetch('/api/operations/top-products?limit=8');
       const data = await response.json();
       if (data.success) {
         setTopProducts(data.data);
@@ -396,7 +396,7 @@ const Dashboard: React.FC = () => {
   // 获取省份分析数据
   const fetchProvinceAnalysis = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/operations/province-analysis');
+      const response = await fetch('/api/operations/province-analysis');
       const data = await response.json();
       if (data.success) {
         setProvinceAnalysis(data.data);
@@ -408,7 +408,7 @@ const Dashboard: React.FC = () => {
 
   const fetchRegionOptions = async () => {
     try {
-      const response = await axios.get('http://localhost:3001/api/region/cascade');
+      const response = await axios.get('/api/region/cascade');
       if (response.data.success) {
         setRegionOptions(response.data.data);
       }
@@ -1074,7 +1074,7 @@ const Dashboard: React.FC = () => {
                           {index + 1}. {product.product_name}
                         </div>
                         <div style={{ fontSize: '11px', color: '#666' }}>
-                          {product.category} | {product.order_count?.toLocaleString()}单 | ¥{product.avg_price?.toFixed(2)}
+                          {product.category} | {product.order_count?.toLocaleString() || 0}单 | ¥{(product.avg_price || 0).toFixed(2)}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', minWidth: '80px' }}>
@@ -1086,7 +1086,7 @@ const Dashboard: React.FC = () => {
                           color: product.growth_trend === 'up' ? '#52c41a' : product.growth_trend === 'down' ? '#f5222d' : '#666'
                         }}>
                           {product.growth_trend === 'up' ? '↗' : product.growth_trend === 'down' ? '↘' : '→'} 
-                          {product.growth_rate?.toFixed(1)}%
+                          {(product.growth_rate || 0).toFixed(1)}%
                         </div>
                       </div>
                     </div>
