@@ -1,6 +1,6 @@
 -- hotdog2030 数据库结构
--- 导出时间: 2025-10-19 12:52:53
--- 表数量: 7
+-- 导出时间: 2025-10-20 15:42:16
+-- 表数量: 16
 
 -- 表: city
 CREATE TABLE [city] (
@@ -36,6 +36,109 @@ CREATE TABLE [customers] (
     [language] nvarchar(20) DEFAULT ('??'),
     [is_active] bit DEFAULT ((1)),
     PRIMARY KEY ([id])
+);
+
+-- 表: dim_customer_segment
+CREATE TABLE [dim_customer_segment] (
+    [customer_id] nvarchar(100) NOT NULL,
+    [r_score] tinyint NOT NULL,
+    [f_score] tinyint NOT NULL,
+    [m_score] tinyint NOT NULL,
+    [segment_code] int NOT NULL,
+    [updated_at] datetime2 DEFAULT (sysutcdatetime()),
+    PRIMARY KEY ([customer_id])
+);
+
+-- 表: fact_alerts
+CREATE TABLE [fact_alerts] (
+    [alert_id] bigint NOT NULL,
+    [date_key] int NOT NULL,
+    [store_id] int,
+    [city] nvarchar(100),
+    [alert_type] nvarchar(50) NOT NULL,
+    [severity] tinyint NOT NULL,
+    [metric] nvarchar(50) NOT NULL,
+    [current_val] decimal(18,2),
+    [baseline_val] decimal(18,2),
+    [delta_pct] decimal(9,4),
+    [message] nvarchar(500),
+    [created_at] datetime2 DEFAULT (sysutcdatetime()),
+    PRIMARY KEY ([alert_id])
+);
+
+-- 表: fact_forecast_daily
+CREATE TABLE [fact_forecast_daily] (
+    [date_key] int NOT NULL,
+    [store_id] int NOT NULL,
+    [yhat] decimal(18,2) NOT NULL,
+    [yhat_lower] decimal(18,2),
+    [yhat_upper] decimal(18,2),
+    [model_name] nvarchar(100),
+    [created_at] datetime2 DEFAULT (sysutcdatetime()),
+    PRIMARY KEY ([date_key], [store_id])
+);
+
+-- 表: fact_profit_daily
+CREATE TABLE [fact_profit_daily] (
+    [date_key] int NOT NULL,
+    [store_id] int NOT NULL,
+    [revenue] decimal(18,2) NOT NULL DEFAULT ((0)),
+    [cogs] decimal(18,2) NOT NULL DEFAULT ((0)),
+    [operating_exp] decimal(18,2) NOT NULL DEFAULT ((0)),
+    [net_profit] decimal(20,2),
+    PRIMARY KEY ([date_key], [store_id])
+);
+
+-- 表: fact_site_score
+CREATE TABLE [fact_site_score] (
+    [candidate_id] int NOT NULL,
+    [city] nvarchar(100),
+    [biz_area] nvarchar(200),
+    [match_score] decimal(9,4) NOT NULL,
+    [cannibal_score] decimal(9,4) NOT NULL,
+    [total_score] decimal(9,4) NOT NULL,
+    [rationale] nvarchar(1000),
+    [created_at] datetime2 DEFAULT (sysutcdatetime()),
+    PRIMARY KEY ([candidate_id])
+);
+
+-- 表: opening_pipeline
+CREATE TABLE [opening_pipeline] (
+    [id] int NOT NULL,
+    [candidate_id] int NOT NULL,
+    [city] nvarchar(100),
+    [status] nvarchar(30) NOT NULL DEFAULT ('pending'),
+    [expected_open_date] date,
+    [owner] nvarchar(50),
+    [note] nvarchar(500),
+    [created_at] datetime2 DEFAULT (sysutcdatetime()),
+    [updated_at] datetime2 DEFAULT (sysutcdatetime()),
+    PRIMARY KEY ([id])
+);
+
+-- 表: opening_task
+CREATE TABLE [opening_task] (
+    [id] int NOT NULL,
+    [pipeline_id] int NOT NULL,
+    [task] nvarchar(100) NOT NULL,
+    [status] nvarchar(20) NOT NULL DEFAULT ('todo'),
+    [due_date] date,
+    [assignee] nvarchar(50),
+    [created_at] datetime2 DEFAULT (sysutcdatetime()),
+    PRIMARY KEY ([id])
+);
+
+ALTER TABLE [opening_task] ADD CONSTRAINT FK_opening_task_pipeline_id FOREIGN KEY ([pipeline_id]) REFERENCES [opening_pipeline]([id]);
+
+-- 表: operating_expense_import
+CREATE TABLE [operating_expense_import] (
+    [date_key] int NOT NULL,
+    [store_id] int NOT NULL,
+    [category] nvarchar(50) NOT NULL,
+    [amount] decimal(18,2) NOT NULL,
+    [note] nvarchar(200),
+    [created_at] datetime2 DEFAULT (sysutcdatetime()),
+    PRIMARY KEY ([date_key], [store_id], [category])
 );
 
 -- 表: order_items
@@ -110,6 +213,15 @@ CREATE TABLE [region_hierarchy] (
     [full_name] nvarchar(200),
     [sort_order] int,
     PRIMARY KEY ([id])
+);
+
+-- 表: review_stats_import
+CREATE TABLE [review_stats_import] (
+    [date_key] int NOT NULL,
+    [store_id] int NOT NULL,
+    [neg_count] int NOT NULL,
+    [total_count] int,
+    PRIMARY KEY ([date_key], [store_id])
 );
 
 -- 表: stores
