@@ -1,31 +1,43 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import DashboardHotdog from './pages/DashboardHotdog';
-import InsightsPage from './pages/InsightsPage';
-import SiteMap from './pages/SiteMap';
-import CompetitorFetch from './pages/CompetitorFetch';
-import ManualsPage from './pages/ManualsPage';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { ConfigProvider } from 'antd';
+import zhCN from 'antd/locale/zh_CN';
+import Layout from './components/Layout';
+import Dashboard from './pages/Dashboard';
+import CustomerProfile from './pages/CustomerProfile';
+import Operations from './pages/Operations';
+import Allocation from './pages/Allocation';
+import SiteSelection from './pages/SiteSelection';
+import NewSiteSelection from './pages/NewSiteSelection';
+import StoreOpening from './pages/StoreOpening';
+import Login from './pages/Login';
+import SalesComparison from './pages/SalesComparison';
+import ETLManagement from './pages/ETLManagement';
+import AIInsightsPage from './pages/AIInsightsPage';
+import './App.css';
 
-export default function App(){
-  const navStyle:React.CSSProperties={padding:10,display:'flex',gap:12,flexWrap:'wrap'};
+const App: React.FC = () => {
   return (
-    <Router>
-      <div style={navStyle}>
-        <Link to="/">🏠首页</Link>
-        <Link to="/dashboard">驾驶舱</Link>
-        <Link to="/insights">AI建议</Link>
-        <Link to="/map">选址地图</Link>
-        <Link to="/competitors">竞争店采集</Link>
-        <Link to="/manuals">人工备注管理</Link>
-      </div>
-      <Routes>
-        <Route path="/" element={<div style={{padding:20}}>欢迎使用热狗智能运营系统</div>} />
-        <Route path="/dashboard" element={<DashboardHotdog/>} />
-        <Route path="/insights" element={<InsightsPage/>} />
-        <Route path="/map" element={<SiteMap/>} />
-        <Route path="/competitors" element={<CompetitorFetch/>} />
-        <Route path="/manuals" element={<ManualsPage/>} />
-      </Routes>
-    </Router>
+    <ConfigProvider locale={zhCN}>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/" element={<Layout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="customer-profile" element={<CustomerProfile />} />
+            <Route path="operations" element={<Operations />} />
+            <Route path="allocation" element={<Allocation />} />
+            <Route path="site-selection" element={<SiteSelection />} />
+            <Route path="new-site-selection" element={<NewSiteSelection />} />
+            <Route path="store-opening" element={<StoreOpening />} />
+            <Route path="sales-comparison" element={<SalesComparison />} />
+            <Route path="etl-management" element={<ETLManagement />} />
+            <Route path="ai-insights" element={<AIInsightsPage />} />
+          </Route>
+        </Routes>
+      </Router>
+    </ConfigProvider>
   );
-}
+};
+
+export default App;
