@@ -23,6 +23,13 @@ import operationsRoutes from './routes/operations';
 import salesPredictionRoutes from './routes/salesPrediction';
 import etlManagementRoutes from './routes/etlManagement';
 import aiInsightsRoutes from './routes/aiInsights';
+import dashboardRoutes from './routes/dashboard';
+
+// 新增业务模块路由
+import { 
+  metricsRouter, segmentsRouter, siteRouter, alertsRouter,
+  siteSelectionRouter, openingRouter, operationsRouter as newOperationsRouter, salesRouter, allocationRouter, profilesRouter, insightsRouter, competitorsRouter, manualRouter 
+} from './modules';
 
 // 加载环境变量
 dotenv.config({ path: '../deploy.env' });
@@ -183,10 +190,28 @@ app.use('/api/customer-profile', customerProfileRoutes);
 app.use('/api/region', regionRoutes);
 app.use('/api/school-management', schoolManagementRoutes);
 app.use('/api/check-database', checkDatabaseRoutes);
-app.use('/api/operations', operationsRoutes);
+// app.use('/api/operations', operationsRoutes); // 注释掉旧路由，避免与新路由冲突
 app.use('/api/sales-prediction', salesPredictionRoutes);
 app.use('/api/etl', etlManagementRoutes);
 app.use('/api/ai-insights', aiInsightsRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+
+// 新增业务模块API路由
+app.use('/api/metrics', metricsRouter);
+app.use('/api/segments', segmentsRouter);
+app.use('/api/site-scores', siteRouter);
+app.use('/api/alerts', alertsRouter);
+
+// 新增总装模块API路由
+app.use('/api/site-selection', siteSelectionRouter);
+app.use('/api/opening', openingRouter);
+app.use('/api/operations', newOperationsRouter);
+app.use('/api/sales', salesRouter);
+app.use('/api/allocation', allocationRouter);
+app.use('/api/profiles', profilesRouter);
+app.use('/api/insights', insightsRouter);
+app.use('/api/competitors', competitorsRouter);
+app.use('/api/manual', manualRouter);
 
 // 404处理
 app.use(notFoundHandler);

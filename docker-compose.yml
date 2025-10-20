@@ -39,9 +39,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3000:80"
     environment:
       - REACT_APP_API_URL=http://localhost:3001
+      - REACT_APP_AMAP_KEY=bdca958664f9ce5e3e6cb7aad0fc49ac
     depends_on:
       - backend
     restart: unless-stopped

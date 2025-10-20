@@ -1,0 +1,42 @@
+version: "3.9"
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      SA_PASSWORD: "YourStrong!Passw0rd"
+      ACCEPT_EULA: "Y"
+    ports:
+      - "1433:1433"
+    volumes:
+      - ./database:/var/opt/mssql/backup
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=mssql
+      - DB_PORT=1433
+      - DB_USER=sa
+      - DB_PASS=YourStrong!Passw0rd
+      - AMAP_KEY=bdca958664f9ce5e3e6cb7aad0fc49ac
+    ports:
+      - "3001:3001"
+    depends_on:
+      - mssql
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend

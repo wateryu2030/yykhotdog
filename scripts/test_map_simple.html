@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>地图测试</title>
+    <meta charset="utf-8">
+    <style>
+        #mapContainer { width: 800px; height: 600px; border: 1px solid #ccc; }
+        #status { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <h1>高德地图加载测试</h1>
+    <div id="status">正在加载地图...</div>
+    <div id="mapContainer"></div>
+    
+    <script>
+        // 使用与React应用相同的API Key
+        const key = 'bdca958664f9ce5e3e6cb7aad0fc49ac';
+        
+        // 动态加载高德地图API
+        const script = document.createElement('script');
+        script.src = `https://webapi.amap.com/maps?v=2.0&key=${key}`;
+        script.onload = function() {
+            document.getElementById('status').innerHTML = 'API加载成功，正在初始化地图...';
+            
+            try {
+                const map = new AMap.Map('mapContainer', {
+                    zoom: 11,
+                    center: [121.47, 31.23]
+                });
+                
+                document.getElementById('status').innerHTML = '✅ 地图加载成功！';
+                
+                // 添加测试标记点
+                const marker = new AMap.Marker({
+                    position: [121.47, 31.23],
+                    title: '测试点'
+                });
+                map.add(marker);
+                
+                // 测试门店数据
+                fetch('/api/site-selection/stores')
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('门店数据:', data);
+                        if (data.rows && data.rows.length > 0) {
+                            data.rows.forEach(store => {
+                                if (store.longitude && store.latitude) {
+                                    const storeMarker = new AMap.Marker({
+                                        position: [store.longitude, store.latitude],
+                                        title: store.store_name
+                                    });
+                                    map.add(storeMarker);
+                                }
+                            });
+                            document.getElementById('status').innerHTML += ` | 已添加 ${data.rows.length} 个门店标记`;
+                        }
+                    })
+                    .catch(error => {
+                        console.error('获取门店数据失败:', error);
+                        document.getElementById('status').innerHTML += ' | 门店数据获取失败';
+                    });
+                
+            } catch (error) {
+                document.getElementById('status').innerHTML = '❌ 地图初始化失败: ' + error.message;
+                console.error('地图初始化错误:', error);
+            }
+        };
+        script.onerror = function() {
+            document.getElementById('status').innerHTML = '❌ API加载失败';
+        };
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>
