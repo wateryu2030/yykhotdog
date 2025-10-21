@@ -117,7 +117,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
     
     if (city) {
       whereClause += ' AND s.city = :city';
-      params.city = city;
+      params.city = decodeURIComponent(city as string);
     }
     if (shopId) {
       whereClause += ' AND o.store_id = :shopId';
@@ -129,13 +129,21 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       params.endDate = endDate;
     }
     
-    // 获取门店统计
+    // 获取门店统计 - 根据筛选条件
+    let storeWhereClause = 'WHERE s.delflag = 0';
+    if (city) {
+      storeWhereClause += ' AND s.city = :city';
+    }
+    if (shopId) {
+      storeWhereClause += ' AND s.id = :shopId';
+    }
+    
     const storeStatsQuery = `
       SELECT 
         COUNT(DISTINCT s.id) as total_stores,
         SUM(CASE WHEN s.status != '已关闭' THEN 1 ELSE 0 END) as operating_stores
       FROM stores s
-      WHERE s.delflag = 0
+      ${storeWhereClause}
     `;
     
     const storeStats = await sequelize.query(storeStatsQuery, {
@@ -458,7 +466,7 @@ router.get('/customers', async (req: Request, res: Response) => {
     
     if (city) {
       whereClause += ' AND s.city = :city';
-      params.city = city;
+      params.city = decodeURIComponent(city as string);
     }
     if (shopId) {
       whereClause += ' AND o.store_id = :shopId';
@@ -598,7 +606,7 @@ router.get('/ai-analysis', async (req: Request, res: Response) => {
 
     if (city) {
       whereClause += ' AND s.city = :city';
-      params.city = city;
+      params.city = decodeURIComponent(city as string);
     }
     if (shopId) {
       whereClause += ' AND o.store_id = :shopId';
@@ -830,3 +838,222 @@ function generateAIAnalysis(segments: any[], timeDistribution: any[], productPre
 }
 
 export default router;
+ 
+// ============ 新增：分层AI分析（兼容前端期望路径/结构） ============
+router.get('/ai-segment-analysis', async (req: Request, res: Response) => {
+  try {
+    const { segment = 'all', city, shopId, startDate, endDate } = req.query as any;
+    let whereClause = 'WHERE o.delflag = 0';
+    const params: any = {};
+    if (city) { whereClause += ' AND s.city = :city'; params.city = city; }
+    if (shopId) { whereClause += ' AND o.store_id = :shopId'; params.shopId = shopId; }
+    if (startDate && endDate) { whereClause += ' AND o.created_at BETWEEN :startDate AND :endDate'; params.startDate = startDate; params.endDate = endDate; }
+
+    const segmentsSql = `
+      WITH customer_stats AS (
+        SELECT 
+          o.customer_id,
+          COUNT(*) as order_count,
+          SUM(o.total_amount) as total_spent,
+          AVG(o.total_amount) as avg_order_value,
+          MIN(o.created_at) as first_order_date,
+          MAX(o.created_at) as last_order_date
+        FROM orders o
+        LEFT JOIN stores s ON o.store_id = s.id
+        ${whereClause}
+        GROUP BY o.customer_id
+      ),
+      customer_segments AS (
+        SELECT 
+          customer_id,
+          order_count,
+          total_spent,
+          avg_order_value,
+          first_order_date,
+          last_order_date,
+          CASE 
+            WHEN total_spent >= 1000 AND order_count >= 10 THEN N'核心客户'
+            WHEN total_spent >= 500 AND order_count >= 5 THEN N'活跃客户'
+            WHEN total_spent >= 100 AND order_count >= 2 THEN N'机会客户'
+            ELSE N'沉睡/新客户'
+          END as segment_name
+        FROM customer_stats
+      )
+      SELECT 
+        segment_name,
+        COUNT(*) as customer_count,
+        AVG(avg_order_value) as avg_spend,
+        AVG(CAST(order_count AS FLOAT)) as avg_orders,
+        SUM(total_spent) as total_revenue
+      FROM customer_segments
+      ${segment && segment !== 'all' ? 'WHERE segment_name = :segment' : ''}
+      GROUP BY segment_name`;
+
+    const segRows: any[] = await sequelize.query(segmentsSql, { type: QueryTypes.SELECT, replacements: segment && segment !== 'all' ? { ...params, segment } : params });
+    // 聚合为单段数据
+    const agg = segRows.reduce((acc, r) => {
+      acc.customer_count += Number(r.customer_count || 0);
+      acc.total_revenue += Number(r.total_revenue || 0);
+      acc._orders_sum += Number(r.avg_orders || 0) * Number(r.customer_count || 0);
+      acc._spend_sum += Number(r.avg_spend || 0) * Number(r.customer_count || 0);
+      return acc;
+    }, { customer_count: 0, total_revenue: 0, _orders_sum: 0, _spend_sum: 0 });
+    const segment_data = {
+      segment: segment,
+      customer_count: agg.customer_count,
+      avg_spend: agg.customer_count ? agg._spend_sum / agg.customer_count : 0,
+      avg_orders: agg.customer_count ? agg._orders_sum / agg.customer_count : 0,
+      total_revenue: agg.total_revenue,
+      product_preferences: [] as any[]
+    };
+
+    // 简单产品偏好（TOP10）- 简化查询避免复杂JOIN
+    try {
+      const prefSql = `
+        SELECT TOP 10 
+          p.product_name as goods_name,
+          COUNT(*) as purchase_count,
+          SUM(oi.quantity * oi.unit_price) as total_amount,
+          AVG(oi.unit_price) as avg_price
+        FROM order_items oi
+        JOIN orders o ON oi.order_id = o.id
+        JOIN products p ON oi.product_id = p.id
+        WHERE o.delflag = 0
+        GROUP BY p.product_name
+        ORDER BY total_amount DESC`;
+      const prefs = await sequelize.query(prefSql, { type: QueryTypes.SELECT });
+      (segment_data as any).product_preferences = prefs;
+    } catch (e) {
+      console.warn('产品偏好查询失败，使用空数组:', e);
+      (segment_data as any).product_preferences = [];
+    }
+
+    // 生成简化AI分析字段
+    const ai_analysis = {
+      characteristics: [
+        `客户规模: ${segment_data.customer_count}人`,
+        `平均客单: ¥${(segment_data.avg_spend || 0).toFixed(2)}`,
+        `平均订单数: ${(segment_data.avg_orders || 0).toFixed(1)}`
+      ],
+      marketing_suggestions: segment === '核心客户' ? ['会员权益升级', '高价值客户回馈'] : segment === '沉睡/新客户' ? ['唤醒拉新券', '社群触达'] : ['常规满减', '新品试吃'],
+      risk_factors: segment === '沉睡/新客户' ? ['复购率低', '价格敏感'] : ['一般风险'],
+      opportunities: ['提升复购', '搭配销售']
+    };
+
+    return res.json({ success: true, data: { segment_data, ai_analysis } });
+  } catch (e) {
+    console.error('ai-segment-analysis 失败:', e);
+    return res.status(500).json({ success: false, message: 'AI分层分析失败' });
+  }
+});
+
+// ============ 新增：客户订单列表（下钻一层） ============
+router.get('/customers/:customerId/orders', async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params as any;
+    const page = Number(req.query.page || 1);
+    const pageSize = Number(req.query.pageSize || 10);
+    const { sortField, sortOrder } = req.query as any;
+    const offset = (page - 1) * pageSize;
+    
+    // 构建排序子句
+    let orderByClause = 'ORDER BY o.created_at DESC'; // 默认按时间倒序
+    if (sortField && sortOrder) {
+      const validFields = ['order_date', 'total_amount'];
+      const validOrders = ['asc', 'desc'];
+      if (validFields.includes(sortField) && validOrders.includes(sortOrder)) {
+        const fieldMap: { [key: string]: string } = {
+          'order_date': 'o.created_at',
+          'total_amount': 'o.total_amount'
+        };
+        orderByClause = `ORDER BY ${fieldMap[sortField]} ${sortOrder.toUpperCase()}`;
+      }
+    }
+    
+    const listSql = `
+      SELECT 
+        o.id as order_id,
+        o.order_no,
+        o.created_at as order_date,
+        o.total_amount,
+        o.pay_state,
+        s.store_name as shop_name
+      FROM orders o
+      LEFT JOIN stores s ON o.store_id = s.id
+      WHERE o.delflag = 0 AND o.customer_id = :customerId
+      ${orderByClause}
+      OFFSET :offset ROWS FETCH NEXT :pageSize ROWS ONLY`;
+    const countSql = `SELECT COUNT(*) as total FROM orders WHERE delflag = 0 AND customer_id = :customerId`;
+    const orders = await sequelize.query(listSql, { type: QueryTypes.SELECT, replacements: { customerId, offset, pageSize } });
+    const totalRow: any = await sequelize.query(countSql, { type: QueryTypes.SELECT, replacements: { customerId } });
+    return res.json({ success: true, data: { orders, total: totalRow[0]?.total || 0 } });
+  } catch (e) {
+    console.error('获取客户订单失败:', e);
+    return res.status(500).json({ success: false, message: '获取客户订单失败' });
+  }
+});
+
+// ============ 新增：订单详情（再下钻一层） ============
+router.get('/orders/:orderId', async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params as any;
+    const headSql = `
+      SELECT 
+        o.id as order_id,
+        o.order_no,
+        o.created_at as order_date,
+        o.total_amount,
+        o.pay_state,
+        s.store_name as shop_name,
+        o.customer_id,
+        c.customer_name,
+        c.phone
+      FROM orders o
+      LEFT JOIN stores s ON o.store_id = s.id
+      LEFT JOIN customers c ON o.customer_id = c.customer_id
+      WHERE o.id = :orderId`;
+    const itemsSql = `
+      SELECT 
+        oi.id,
+        oi.product_name as goods_name,
+        oi.quantity as goods_number,
+        oi.price as goods_price,
+        oi.total_price as total_price,
+        p.category_id as category,
+        0 as discount_amount,
+        0 as refund_amount
+      FROM order_items oi
+      LEFT JOIN products p ON oi.product_id = p.id
+      WHERE oi.order_id = :orderId`;
+    const head: any = await sequelize.query(headSql, { type: QueryTypes.SELECT, replacements: { orderId: Number(orderId) } });
+    let goods: any[] = [];
+    try {
+      goods = await sequelize.query(itemsSql, { type: QueryTypes.SELECT, replacements: { orderId: Number(orderId) } });
+    } catch (e) {
+      console.warn('订单商品查询失败，使用空数组:', e);
+      goods = [];
+    }
+    if (!head.length) return res.status(404).json({ success: false, message: '订单不存在' });
+    
+    // 如果没有商品明细，显示提示信息
+    const orderData = { ...head[0], goods };
+    if (goods.length === 0) {
+      orderData.goods = [{
+        id: 0,
+        goods_name: '【数据异常】该订单缺少商品明细',
+        goods_number: 1,
+        goods_price: orderData.total_amount,
+        total_price: orderData.total_amount,
+        category: '系统提示',
+        discount_amount: 0,
+        refund_amount: 0,
+        is_system_note: true
+      }];
+    }
+    
+    return res.json({ success: true, data: orderData });
+  } catch (e) {
+    console.error('获取订单详情失败:', e);
+    return res.status(500).json({ success: false, message: '获取订单详情失败' });
+  }
+});

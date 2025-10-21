@@ -23,6 +23,8 @@ import operationsRoutes from './routes/operations';
 import salesPredictionRoutes from './routes/salesPrediction';
 import etlManagementRoutes from './routes/etlManagement';
 import aiInsightsRoutes from './routes/aiInsights';
+import { metricsV2 } from './routes/metrics.v2';
+import { alertsV2 } from './routes/alerts.v2';
 
 // 加载环境变量
 dotenv.config({ path: '../deploy.env' });
@@ -187,6 +189,8 @@ app.use('/api/operations', operationsRoutes);
 app.use('/api/sales-prediction', salesPredictionRoutes);
 app.use('/api/etl', etlManagementRoutes);
 app.use('/api/ai-insights', aiInsightsRoutes);
+app.use('/api', metricsV2);
+app.use('/api', alertsV2);
 
 // 404处理
 app.use(notFoundHandler);
