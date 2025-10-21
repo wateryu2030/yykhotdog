@@ -1,0 +1,16 @@
+[Unit]
+Description=Cursor Auto Patch Daemon
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/your/repo/root
+Environment=REPO_DIR=/your/repo/root
+Environment=CURSOR_CMD=run-auto-commit
+Environment=POLL_MS=30000
+ExecStart=/usr/bin/node /your/repo/root/scripts/cursor_daemon.mjs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

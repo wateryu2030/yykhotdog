@@ -1,0 +1,141 @@
+name: OpenAI AutoCommit
+
+on:
+  push:
+    branches: [ "main", "fix/**", "feature/**" ]
+  workflow_dispatch:
+
+jobs:
+  analyze-and-patch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: |
+          mkdir -p scripts
+          npm i -g npm@latest
+          npm i openai@4.67.2 fast-glob@3.3.2 js-yaml@4.1.0 simple-git@3.22.0
+
+      - name: Write analyzer script
+        run: |
+          cat > scripts/openai_analyze_and_patch.mjs <<'EOF'
+          import fs from 'fs';
+          import path from 'path';
+          import fg from 'fast-glob';
+          import yaml from 'js-yaml';
+          import { OpenAI } from 'openai';
+          import simpleGit from 'simple-git';
+
+          const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+          if (!OPENAI_API_KEY) {
+            console.error('Missing OPENAI_API_KEY secret');
+            process.exit(1);
+          }
+          const client = new OpenAI({ apiKey: OPENAI_API_KEY });
+          const git = simpleGit();
+
+          const repoRoot = process.cwd();
+          const globs = ['backend/**/*.{ts,js,json}', 'frontend/**/*.{ts,tsx,js,jsx,json}', 'database/**/*.sql', '!**/node_modules/**', '!**/dist/**', '!**/build/**'];
+          const files = await fg(globs, { dot: true });
+
+          // 查找最近一次提交改动的文件，作为重点分析
+          const lastDiff = await git.raw(['diff', '--name-only', 'HEAD~1..HEAD']).catch(()=> '');
+          const hotFiles = new Set(lastDiff.split('\n').filter(Boolean));
+
+          // 读取小样本上下文：不超过 100KB
+          const MAX_BYTES = 100 * 1024;
+          const contextSnippets = [];
+          let consumed = 0;
+          for (const f of files.slice(0, 120)) {
+            try {
+              const p = path.join(repoRoot, f);
+              const buf = fs.readFileSync(p);
+              if (consumed + buf.length > MAX_BYTES) continue;
+              consumed += buf.length;
+              contextSnippets.push({ file: f, content: buf.toString('utf8').slice(0, 10000) });
+            } catch {}
+          }
+
+          // 提示词：让模型返回 JSON patch 包（file+content）
+          const sys = `你是高级全栈工程师。请严格输出 JSON：
+          {
+            "summary": "本次修改摘要（中文）",
+            "changes": [
+              {"file": "相对路径", "content": "新的完整文件内容"}
+            ]
+          }
+          只返回 JSON`;
+
+          const user = `
+          仓库关键文件样本如下（最多100KB）：
+          ${contextSnippets.map(s=>`[${s.file}]\n${s.content}`).join('\n\n')}
+
+          任务：
+          1) 修复可能的类型/构建/路由小问题；
+          2) 优化 /product-profile 数据流与错误处理；
+          3) 保持向后兼容（不要破坏现有接口路径）；
+          4) 小步修改，每个文件尽量原地增量重写。
+
+          输出严格 JSON；若没有修改必要，返回 {"summary":"no change","changes":[]}。
+          `;
+
+          const resp = await client.chat.completions.create({
+            model: 'gpt-4o-mini',
+            temperature: 0.2,
+            messages: [
+              { role: 'system', content: sys },
+              { role: 'user', content: user }
+            ]
+          });
+
+          const text = resp.choices?.[0]?.message?.content || '';
+          let json;
+          try { json = JSON.parse(text); }
+          catch(e){ console.error('模型返回不是JSON：', text); process.exit(1); }
+
+          const branch = `ai/patch-${Date.now()}`;
+          await git.checkoutLocalBranch(branch);
+
+          const patchDir = path.join(repoRoot, 'auto-patches');
+          fs.mkdirSync(patchDir, { recursive: true });
+          const patchFile = path.join(patchDir, `patch_${new Date().toISOString().replace(/[:.]/g,'-')}.md`);
+          fs.writeFileSync(patchFile, `# AI Patch\n\n${yaml.dump(json, { lineWidth: 120 })}`);
+
+          for (const ch of (json.changes||[])) {
+            const p = path.join(repoRoot, ch.file);
+            fs.mkdirSync(path.dirname(p), { recursive: true });
+            fs.writeFileSync(p, ch.content);
+          }
+
+          await git.add('.');
+          const msg = json.summary && json.summary !== 'no change'
+            ? `chore(ai): ${json.summary}`
+            : 'chore(ai): auto patch (no-op)';
+          await git.commit(msg);
+
+          // 推送并开 PR
+          const remote = (await git.getRemotes()).find(r=>r.name==='origin');
+          if (remote) {
+            await git.push('origin', branch);
+            // 输出 PR 说明到 GITHUB_STEP_SUMMARY
+            const prText = `分支已推送：${branch}\n\n摘要：${json.summary || 'n/a'}\n变更文件数：${json.changes?.length||0}`;
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY || '/dev/null', prText);
+          }
+          EOF
+
+      - name: Run analyzer
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: node scripts/openai_analyze_and_patch.mjs

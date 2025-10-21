@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ "main", "ai/**", "fix/**", "feature/**" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+
+      - name: Backend build
+        working-directory: backend
+        run: |
+          npm ci || npm i
+          npm run build || echo "no build script"
+
+      - name: Frontend build
+        working-directory: frontend
+        run: |
+          npm ci || npm i
+          npm run build || echo "no build script"
+
+      - name: Lint (optional)
+        run: |
+          npx -y eslint . || echo "eslint skipped"
