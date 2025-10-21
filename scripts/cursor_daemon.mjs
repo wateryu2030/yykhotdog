@@ -12,8 +12,20 @@ const seen = new Set();
 function pull() {
   try {
     execSync('git fetch --all', { cwd: REPO_DIR, stdio: 'inherit' });
-    execSync('git pull', { cwd: REPO_DIR, stdio: 'inherit' });
-  } catch (e) { console.warn('Git pull 失败', e.message); }
+    // 尝试拉取当前分支的更新
+    const currentBranch = execSync('git branch --show-current', { cwd: REPO_DIR, encoding: 'utf8' }).trim();
+    try {
+      execSync(`git pull origin ${currentBranch}`, { cwd: REPO_DIR, stdio: 'inherit' });
+    } catch (pullError) {
+      console.warn('Git pull 失败，尝试设置跟踪:', pullError.message);
+      try {
+        execSync(`git branch --set-upstream-to=origin/${currentBranch} ${currentBranch}`, { cwd: REPO_DIR, stdio: 'inherit' });
+        execSync('git pull', { cwd: REPO_DIR, stdio: 'inherit' });
+      } catch (setupError) {
+        console.warn('设置跟踪失败，跳过本次拉取:', setupError.message);
+      }
+    }
+  } catch (e) { console.warn('Git fetch 失败', e.message); }
 }
 
 function findPatches() {
