@@ -11,21 +11,28 @@ const seen = new Set();
 
 function pull() {
   try {
-    execSync('git fetch --all', { cwd: REPO_DIR, stdio: 'inherit' });
-    // 尝试拉取当前分支的更新
+    // 静默执行git fetch，减少输出
+    execSync('git fetch --all', { cwd: REPO_DIR, stdio: 'pipe' });
+    
+    // 检查是否有新的提交
     const currentBranch = execSync('git branch --show-current', { cwd: REPO_DIR, encoding: 'utf8' }).trim();
-    try {
+    const localCommit = execSync('git rev-parse HEAD', { cwd: REPO_DIR, encoding: 'utf8' }).trim();
+    const remoteCommit = execSync(`git rev-parse origin/${currentBranch}`, { cwd: REPO_DIR, encoding: 'utf8' }).trim();
+    
+    if (localCommit !== remoteCommit) {
+      console.log('🔄 发现远程更新，正在拉取...');
       execSync(`git pull origin ${currentBranch}`, { cwd: REPO_DIR, stdio: 'inherit' });
-    } catch (pullError) {
-      console.warn('Git pull 失败，尝试设置跟踪:', pullError.message);
-      try {
-        execSync(`git branch --set-upstream-to=origin/${currentBranch} ${currentBranch}`, { cwd: REPO_DIR, stdio: 'inherit' });
-        execSync('git pull', { cwd: REPO_DIR, stdio: 'inherit' });
-      } catch (setupError) {
-        console.warn('设置跟踪失败，跳过本次拉取:', setupError.message);
+    } else {
+      // 只在调试模式下输出
+      if (process.env.DEBUG) {
+        console.log('📡 远程仓库已是最新');
       }
     }
-  } catch (e) { console.warn('Git fetch 失败', e.message); }
+  } catch (e) { 
+    if (process.env.DEBUG) {
+      console.warn('Git 操作失败:', e.message); 
+    }
+  }
 }
 
 function findPatches() {
@@ -61,11 +68,18 @@ function runCursorOnce(patchFile) {
 function loop() {
   pull();
   const patches = findPatches();
+  
+  if (patches.length > 0) {
+    console.log(`🔍 发现 ${patches.length} 个补丁文件`);
+  }
+  
   for (const p of patches) {
     if (seen.has(p)) continue;
     seen.add(p);
+    console.log('🛠️ 处理新补丁:', path.basename(p));
     runCursorOnce(p);
   }
+  
   setTimeout(loop, POLL_MS);
 }
 
