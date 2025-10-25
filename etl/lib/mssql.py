@@ -17,15 +17,15 @@ class MSSQLConnector:
     """MSSQL数据库连接器"""
     
     def __init__(self, host: str = None, port: str = None, user: str = None, password: str = None):
-        self.host = host or os.getenv('MSSQL_HOST', 'localhost')
+        self.host = host or os.getenv('MSSQL_HOST', 'rm-uf660d00xovkm30678o.sqlserver.rds.aliyuncs.com')
         self.port = port or os.getenv('MSSQL_PORT', '1433')
-        self.user = user or os.getenv('MSSQL_USER', 'sa')
-        self.password = password or os.getenv('MSSQL_PASS', 'Passw0rd')
+        self.user = user or os.getenv('MSSQL_USER', 'hotdog')
+        self.password = password or os.getenv('MSSQL_PASS', 'Zhkj@62102218')
     
     def get_connection_string(self, database: str = None) -> str:
         """生成连接字符串"""
         conn_str = (
-            "DRIVER={ODBC Driver 17 for SQL Server};"
+            "DRIVER={ODBC Driver 18 for SQL Server};"
             f"SERVER={self.host},{self.port};"
             f"DATABASE={database};"
             f"UID={self.user};"

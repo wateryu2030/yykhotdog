@@ -16,7 +16,7 @@ router.get('/profit-analysis', async (req: Request, res: Response) => {
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '1433'),
       database: 'hotdog2030',
-      username: process.env.DB_USER || 'sa',
+      username: process.env.DB_USERNAME || 'sa',
       password: process.env.DB_PASSWORD || 'Passw0rd',
       logging: false,
     });
@@ -68,7 +68,7 @@ router.get('/customer-segments', async (req: Request, res: Response) => {
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '1433'),
       database: 'hotdog2030',
-      username: process.env.DB_USER || 'sa',
+      username: process.env.DB_USERNAME || 'sa',
       password: process.env.DB_PASSWORD || 'Passw0rd',
       logging: false,
     });
@@ -108,7 +108,7 @@ router.get('/sales-forecasts', async (req: Request, res: Response) => {
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '1433'),
       database: 'hotdog2030',
-      username: process.env.DB_USER || 'sa',
+      username: process.env.DB_USERNAME || 'sa',
       password: process.env.DB_PASSWORD || 'Passw0rd',
       logging: false,
     });
@@ -148,7 +148,7 @@ router.get('/site-scores', async (req: Request, res: Response) => {
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '1433'),
       database: 'hotdog2030',
-      username: process.env.DB_USER || 'sa',
+      username: process.env.DB_USERNAME || 'sa',
       password: process.env.DB_PASSWORD || 'Passw0rd',
       logging: false,
     });
@@ -188,7 +188,7 @@ router.get('/dashboard-metrics', async (req: Request, res: Response) => {
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '1433'),
       database: 'hotdog2030',
-      username: process.env.DB_USER || 'sa',
+      username: process.env.DB_USERNAME || 'sa',
       password: process.env.DB_PASSWORD || 'Passw0rd',
       logging: false,
     });
@@ -226,7 +226,7 @@ router.get('/insights', async (req: Request, res: Response) => {
       host: process.env.DB_HOST || 'localhost',
       port: parseInt(process.env.DB_PORT || '1433'),
       database: 'hotdog2030',
-      username: process.env.DB_USER || 'sa',
+      username: process.env.DB_USERNAME || 'sa',
       password: process.env.DB_PASSWORD || 'Passw0rd',
       logging: false,
     });

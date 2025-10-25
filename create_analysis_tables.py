@@ -7,13 +7,14 @@ import os
 
 def create_analysis_tables():
     """创建分析层表"""
-    # 连接字符串
+    # 连接字符串 - 使用RDS配置
     conn_str = (
-        "DRIVER={ODBC Driver 17 for SQL Server};"
-        "SERVER=localhost,1433;"
+        "DRIVER={ODBC Driver 18 for SQL Server};"
+        "SERVER=rm-uf660d00xovkm3067.sqlserver.rds.aliyuncs.com,1433;"
         "DATABASE=hotdog2030;"
-        "UID=sa;"
-        "PWD=YourStrong@Passw0rd;"
+        "UID=hotdog;"
+        "PWD=Zhkj@62102218;"
+        "TrustServerCertificate=yes;"
     )
     
     try:

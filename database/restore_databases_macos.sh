@@ -3,7 +3,7 @@
 # 用于从备份文件恢复 cyrg2025 和 cyrgweixin 数据库
 
 # 数据库连接参数
-SERVER="rm-uf660d00xovkm30678o.sqlserver.rds.aliyuncs.com,1433"
+SERVER="rm-uf660d00xovkm3067.sqlserver.rds.aliyuncs.com,1433"
 USERNAME="hotdog"
 PASSWORD="Zhkj@62102218"
 

@@ -4,7 +4,7 @@
 包括：门店、商品、订单、订单商品、客户数据
 支持增量更新和全量同步
 """
-import pyodbc
+import pymssql
 import logging
 from datetime import datetime
 import sys
@@ -20,12 +20,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 数据库连接配置
+# 数据库连接配置 - 使用RDS
 CONFIG = {
-    'server': 'localhost',
+    'server': 'rm-uf660d00xovkm30678o.sqlserver.rds.aliyuncs.com',
     'port': 1433,
-    'username': 'sa',
-    'password': 'YourStrong@Passw0rd',
+    'username': 'hotdog',
+    'password': 'Zhkj@62102218',
     'driver': '{ODBC Driver 18 for SQL Server}',
     'timeout': 30
 }
@@ -33,8 +33,13 @@ CONFIG = {
 def get_connection(database='hotdog2030'):
     """获取数据库连接"""
     try:
-        conn_str = f"DRIVER={CONFIG['driver']};SERVER={CONFIG['server']},{CONFIG['port']};DATABASE={database};UID={CONFIG['username']};PWD={CONFIG['password']};TrustServerCertificate=yes;"
-        conn = pyodbc.connect(conn_str, timeout=CONFIG['timeout'])
+        conn = pymssql.connect(
+            server=CONFIG['server'],
+            port=CONFIG['port'],
+            user=CONFIG['username'],
+            password=CONFIG['password'],
+            database=database
+        )
         logger.info(f"✅ 数据库连接成功: {database}")
         return conn
     except Exception as e:

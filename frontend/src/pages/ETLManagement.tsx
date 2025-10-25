@@ -58,7 +58,7 @@ const ETLManagement: React.FC = () => {
   // 获取ETL状态
   const fetchETLStatus = async () => {
     try {
-      const response = await fetch('/api/etl/status');
+      const response = await fetch('http://localhost:3001/api/etl/status');
       const data = await response.json();
       setEtlStatus(data);
     } catch (error) {
@@ -73,7 +73,7 @@ const ETLManagement: React.FC = () => {
     setLoading(true);
     
     try {
-      const response = await fetch(`/api/etl/execute/${stepId}`, {
+      const response = await fetch(`http://localhost:3001/api/etl/execute/${stepId}`, {
         method: 'POST',
       });
       const data = await response.json();
@@ -102,7 +102,7 @@ const ETLManagement: React.FC = () => {
     message.info('开始执行完整ETL流程...');
     
     try {
-      const response = await fetch('/api/etl/execute-all', {
+      const response = await fetch('http://localhost:3001/api/etl/execute-all', {
         method: 'POST',
       });
       const data = await response.json();

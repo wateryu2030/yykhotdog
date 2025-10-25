@@ -1,7 +1,7 @@
 // API配置
 export const API_CONFIG = {
-  // 使用相对路径，通过Nginx代理
-  BASE_URL: '',
+  // 直接连接到后端服务
+  BASE_URL: 'http://localhost:3001',
   
   // 后端API端点
   BACKEND: {
@@ -61,7 +61,7 @@ export const api = {
     try {
       const params = config?.params ? `?${new URLSearchParams(config.params)}` : '';
       // 使用完整URL
-      const fullUrl = url.startsWith('http') ? url : `${API_CONFIG.BASE_URL}/api${url}`;
+      const fullUrl = url.startsWith('http') ? url : `${API_CONFIG.BASE_URL}${url}`;
       
       const response = await fetch(`${fullUrl}${params}`, {
         method: 'GET',
@@ -96,7 +96,7 @@ export const api = {
   post: async (url: string, data?: any, config?: any) => {
     try {
       // 使用完整URL
-      const fullUrl = url.startsWith('http') ? url : `${API_CONFIG.BASE_URL}/api${url}`;
+      const fullUrl = url.startsWith('http') ? url : `${API_CONFIG.BASE_URL}${url}`;
       
       const response = await fetch(fullUrl, {
         method: 'POST',
@@ -135,7 +135,7 @@ export const backendAPI = {
   // 仪表板数据
   getDashboard: async (params?: any) => {
     try {
-      const response = await fetch(`${API_CONFIG.BACKEND.DASHBOARD}?${new URLSearchParams(params)}`);
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.BACKEND.DASHBOARD}?${new URLSearchParams(params)}`);
       const data = await response.json();
       return data;
     } catch (error) {
@@ -147,7 +147,7 @@ export const backendAPI = {
   // 站点选择
   getSiteSelection: async (params?: any) => {
     try {
-      const response = await fetch(`${API_CONFIG.BACKEND.SITE_SELECTION}?${new URLSearchParams(params)}`);
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.BACKEND.SITE_SELECTION}?${new URLSearchParams(params)}`);
       const data = await response.json();
       return data;
     } catch (error) {
@@ -159,7 +159,7 @@ export const backendAPI = {
   // 门店运营
   getOperations: async (params?: any) => {
     try {
-      const response = await fetch(`${API_CONFIG.BACKEND.OPERATIONS}?${new URLSearchParams(params)}`);
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.BACKEND.OPERATIONS}?${new URLSearchParams(params)}`);
       const data = await response.json();
       return data;
     } catch (error) {
@@ -171,7 +171,7 @@ export const backendAPI = {
   // 收益分配
   getAllocation: async (params?: any) => {
     try {
-      const response = await fetch(`${API_CONFIG.BACKEND.ALLOCATION}?${new URLSearchParams(params)}`);
+      const response = await fetch(`${API_CONFIG.BASE_URL}${API_CONFIG.BACKEND.ALLOCATION}?${new URLSearchParams(params)}`);
       const data = await response.json();
       return data;
     } catch (error) {
@@ -187,7 +187,7 @@ export const amapAPI = {
   reverseGeocode: async (longitude: number, latitude: number) => {
     try {
       const response = await fetch(
-        `${API_CONFIG.AMAP.REVERSE_GEOCODE_URL}?longitude=${longitude}&latitude=${latitude}`
+        `${API_CONFIG.BASE_URL}${API_CONFIG.AMAP.REVERSE_GEOCODE_URL}?longitude=${longitude}&latitude=${latitude}`
       );
       const data = await response.json();
       return data;
@@ -201,7 +201,7 @@ export const amapAPI = {
   getWeather: async (city: string) => {
     try {
       const response = await fetch(
-        `${API_CONFIG.AMAP.WEATHER_URL}?city=${encodeURIComponent(city)}`
+        `${API_CONFIG.BASE_URL}${API_CONFIG.AMAP.WEATHER_URL}?city=${encodeURIComponent(city)}`
       );
       const data = await response.json();
       return data;
@@ -215,7 +215,7 @@ export const amapAPI = {
   searchPOI: async (keyword: string, city: string) => {
     try {
       const response = await fetch(
-        `${API_CONFIG.AMAP.POI_SEARCH_URL}?keyword=${encodeURIComponent(keyword)}&city=${encodeURIComponent(city)}`
+        `${API_CONFIG.BASE_URL}${API_CONFIG.AMAP.POI_SEARCH_URL}?keyword=${encodeURIComponent(keyword)}&city=${encodeURIComponent(city)}`
       );
       const data = await response.json();
       return data;
@@ -232,7 +232,7 @@ export const qweatherAPI = {
   getNowWeather: async (location: string) => {
     try {
       const response = await fetch(
-        `${API_CONFIG.QWEATHER.NOW_URL}?location=${encodeURIComponent(location)}`
+        `${API_CONFIG.BASE_URL}${API_CONFIG.QWEATHER.NOW_URL}?location=${encodeURIComponent(location)}`
       );
       const data = await response.json();
       return data;
@@ -246,7 +246,7 @@ export const qweatherAPI = {
   getForecast: async (location: string) => {
     try {
       const response = await fetch(
-        `${API_CONFIG.QWEATHER.FORECAST_URL}?location=${encodeURIComponent(location)}`
+        `${API_CONFIG.BASE_URL}${API_CONFIG.QWEATHER.FORECAST_URL}?location=${encodeURIComponent(location)}`
       );
       const data = await response.json();
       return data;
@@ -260,7 +260,7 @@ export const qweatherAPI = {
   getHourly: async (location: string) => {
     try {
       const response = await fetch(
-        `${API_CONFIG.QWEATHER.HOURLY_URL}?location=${encodeURIComponent(location)}`
+        `${API_CONFIG.BASE_URL}${API_CONFIG.QWEATHER.HOURLY_URL}?location=${encodeURIComponent(location)}`
       );
       const data = await response.json();
       return data;

@@ -19,9 +19,10 @@ logger = logging.getLogger(__name__)
 def get_conn(db_name="hotdog2030"):
     """获取数据库连接"""
     conn_str = (
-        "DRIVER={ODBC Driver 17 for SQL Server};"
-        f"SERVER={os.getenv('MSSQL_HOST', 'localhost')},{os.getenv('MSSQL_PORT','1433')};"
-        f"DATABASE={db_name};UID={os.getenv('MSSQL_USER','sa')};PWD={os.getenv('MSSQL_PASS','YourStrong@Passw0rd')};"
+        "DRIVER={ODBC Driver 18 for SQL Server};"
+        f"SERVER={os.getenv('MSSQL_HOST', 'rm-uf660d00xovkm3067.sqlserver.rds.aliyuncs.com')},{os.getenv('MSSQL_PORT','1433')};"
+        f"DATABASE={db_name};UID={os.getenv('MSSQL_USER','hotdog')};PWD={os.getenv('MSSQL_PASS','Zhkj@62102218')};"
+        "TrustServerCertificate=yes;"
     )
     return pyodbc.connect(conn_str)
 
@@ -271,11 +272,11 @@ def main():
     """主函数"""
     logger.info("🚀 开始更新分析层数据...")
     
-    # 设置环境变量
-    os.environ['MSSQL_HOST'] = 'localhost'
+    # 设置环境变量 - 使用RDS
+    os.environ['MSSQL_HOST'] = 'rm-uf660d00xovkm3067.sqlserver.rds.aliyuncs.com'
     os.environ['MSSQL_PORT'] = '1433'
-    os.environ['MSSQL_USER'] = 'sa'
-    os.environ['MSSQL_PASS'] = 'YourStrong@Passw0rd'
+    os.environ['MSSQL_USER'] = 'hotdog'
+    os.environ['MSSQL_PASS'] = 'Zhkj@62102218'
     
     # 测试数据库连接
     try:

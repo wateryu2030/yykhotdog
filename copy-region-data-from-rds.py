@@ -10,7 +10,7 @@ from datetime import datetime
 
 # RDS数据库配置
 RDS_CONFIG = {
-    'server': 'rm-uf660d00xovkm30678o.sqlserver.rds.aliyuncs.com',
+    'server': 'rm-uf660d00xovkm3067.sqlserver.rds.aliyuncs.com',
     'port': 1433,
     'database': 'hotdog2030',
     'username': 'hotdog',
@@ -19,13 +19,13 @@ RDS_CONFIG = {
     'timeout': 30
 }
 
-# 本地数据库配置
+# 本地数据库配置 - 现在也使用RDS
 LOCAL_CONFIG = {
-    'server': 'localhost',
+    'server': 'rm-uf660d00xovkm3067.sqlserver.rds.aliyuncs.com',
     'port': 1433,
     'database': 'hotdog2030',
-    'username': 'sa',
-    'password': 'YourStrong@Passw0rd',
+    'username': 'hotdog',
+    'password': 'Zhkj@62102218',
     'driver': '{ODBC Driver 18 for SQL Server}',
     'timeout': 30
 }

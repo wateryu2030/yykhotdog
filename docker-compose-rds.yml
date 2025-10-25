@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # 后端服务 - 使用RDS数据库
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: yykhotdog_backend_rds
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - DB_HOST=rm-uf660d00xovkm30678o.sqlserver.rds.aliyuncs.com
+      - DB_PORT=1433
+      - DB_USERNAME=hotdog
+      - DB_PASSWORD=Zhkj@62102218
+      - DB_NAME=hotdog2030
+      - CARGO_DB_HOST=rm-uf660d00xovkm30678o.sqlserver.rds.aliyuncs.com
+      - CARGO_DB_PORT=1433
+      - CARGO_DB_USER=hotdog
+      - CARGO_DB_PASSWORD=Zhkj@62102218
+      - CARGO_DB_NAME=cyrg2025
+      - JWT_SECRET=zhhotdog_jwt_secret_key_2024_development
+      - JWT_EXPIRES_IN=7d
+      - LOG_LEVEL=debug
+      - UPLOAD_PATH=./uploads
+      - MAX_FILE_SIZE=10485760
+      - AMAP_JS_API_KEY=bdca958664f9ce5e3e6cb7aad0fc49ac
+      - AMAP_WEB_API_KEY=bdca958664f9ce5e3e6cb7aad0fc49ac
+    volumes:
+      - ./backend/logs:/app/logs
+      - ./backend/uploads:/app/uploads
+    restart: unless-stopped
+
+  # 前端服务
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: yykhotdog_frontend_rds
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://localhost:3001
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Nginx反向代理
+  nginx:
+    image: nginx:alpine
+    container_name: yykhotdog_nginx_rds
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped

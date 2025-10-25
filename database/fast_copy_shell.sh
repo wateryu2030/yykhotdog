@@ -3,7 +3,7 @@
 # 使用 sqlcmd 直接执行 SQL 命令
 
 # 数据库连接参数
-SERVER="rm-uf660d00xovkm30678o.sqlserver.rds.aliyuncs.com,1433"
+SERVER="rm-uf660d00xovkm3067.sqlserver.rds.aliyuncs.com,1433"
 USERNAME="hotdog"
 PASSWORD="Zhkj@62102218"
 

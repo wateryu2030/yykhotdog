@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 
 # 数据库连接配置
-SERVER = "rm-uf660d00xovkm30678o.sqlserver.rds.aliyuncs.com,1433"
+SERVER = "rm-uf660d00xovkm3067.sqlserver.rds.aliyuncs.com,1433"
 USERNAME = "hotdog"
 PASSWORD = "Zhkj@62102218"
 DRIVER = "ODBC Driver 18 for SQL Server"

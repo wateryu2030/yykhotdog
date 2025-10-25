@@ -277,7 +277,7 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       
       // 2. Props提取失败时调用API
       console.log('🔍 从API获取城市名称...');
-      const res = await fetch(`/api/region/cascade?level=2&parentCode=${provinceCode}`);
+      const res = await fetch(`http://localhost:3001/api/region/cascade?level=2&parentCode=${provinceCode}`);
       const data = await res.json();
       
       if (data.success && data.data) {
@@ -358,7 +358,7 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       const isSpecial = district && (district === '省直辖县级行政区划' || district.includes('直辖'));
       const location = isSpecial ? cityName : `${cityName}${district || ''}`;
 
-      const res = await fetch('/api/enhanced-ai-analysis/analyze-business-environment', {
+      const res = await fetch('http://localhost:3001/api/enhanced-ai-analysis/analyze-business-environment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ location, poiList, saveToDB })
@@ -745,13 +745,13 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       console.log('🔍 搜索位置:', searchLocation);
       
       // 尝试按区县级别搜索
-      let res = await fetch(`/api/enhanced-ai-analysis/schools-with-analysis/${searchLocation}?saveToDB=false`);
+      let res = await fetch(`http://localhost:3001/api/enhanced-ai-analysis/schools-with-analysis/${searchLocation}?saveToDB=false`);
       let data = await res.json();
 
       // 处理无数据情况：尝试按城市级别搜索
       if (!data.success || data.data.length === 0) {
         setAnalysisMessage('正在尝试城市级查询...');
-        res = await fetch(`/api/enhanced-ai-analysis/schools-with-analysis/${cityName}?saveToDB=false`);
+        res = await fetch(`http://localhost:3001/api/enhanced-ai-analysis/schools-with-analysis/${cityName}?saveToDB=false`);
         data = await res.json();
 
         if (!data.success || data.data.length === 0) {
@@ -765,7 +765,7 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       // 2. 分析商业环境
       setAnalysisMessage('正在分析商业环境和市场潜力...');
       const poiList = schools.slice(0, 10).map(school => school.name);
-      const envRes = await fetch('/api/enhanced-ai-analysis/analyze-business-environment', {
+      const envRes = await fetch('http://localhost:3001/api/enhanced-ai-analysis/analyze-business-environment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -9,7 +9,7 @@ const { Option } = Select;
 
 // 创建axios实例
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: 'http://localhost:3001/api',
   timeout: 10000,
 });
 

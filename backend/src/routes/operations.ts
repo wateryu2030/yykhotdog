@@ -990,13 +990,15 @@ router.get('/overview', async (req: Request, res: Response) => {
         AND CAST(created_at AS DATE) = :targetDate
     `;
     
-    // 门店统计查询 - 简化
+    // 门店统计查询 - 包含城市统计
     const storeStatsQuery = `
-      SELECT TOP 1
-        COUNT(*) as operating_stores
+      SELECT 
+        COUNT(*) as operating_stores,
+        COUNT(DISTINCT CASE WHEN city IS NOT NULL AND city != '' THEN city END) as operating_cities,
+        COUNT(DISTINCT CASE WHEN province IS NOT NULL AND province != '' THEN province END) as operating_provinces
       FROM stores 
       WHERE delflag = 0 
-        AND status = N'营业中'
+        AND status = 'active'
     `;
     
     // 执行查询
@@ -1010,7 +1012,7 @@ router.get('/overview', async (req: Request, res: Response) => {
     });
     
     const today = todayResult[0] as any;
-    const operatingStores = storeResult[0] as any;
+    const storeStats = storeResult[0] as any;
     
     // 返回极简的数据结构
     const overviewData = {
@@ -1019,8 +1021,9 @@ router.get('/overview', async (req: Request, res: Response) => {
         totalOrders: today?.total_orders || 0,
         avgOrderValue: today?.avg_order_value || 0,
         totalCustomers: 0, // 简化，不查询客户数
-        operatingStores: operatingStores?.operating_stores || 0,
-        operatingCities: 0 // 简化，不查询城市数
+        operatingStores: storeStats?.operating_stores || 0,
+        operatingCities: storeStats?.operating_cities || 0,
+        operatingProvinces: storeStats?.operating_provinces || 0
       },
       summary: {
         dateRange: {
@@ -1331,11 +1334,11 @@ router.get('/gis-map', async (req: Request, res: Response) => {
         s.created_at,
         -- 统计信息（仅对营业中的门店）
         CASE 
-          WHEN s.status = N'营业中' THEN COUNT(DISTINCT CASE WHEN o.pay_state = 2 THEN o.id END)
+          WHEN s.status = 'active' THEN COUNT(DISTINCT CASE WHEN o.pay_state = 2 THEN o.id END)
           ELSE 0
         END as order_count,
         CASE 
-          WHEN s.status = N'营业中' THEN SUM(CASE WHEN o.pay_state = 2 THEN o.total_amount ELSE 0 END)
+          WHEN s.status = 'active' THEN SUM(CASE WHEN o.pay_state = 2 THEN o.total_amount ELSE 0 END)
           ELSE 0
         END as total_revenue,
         -- 区分门店类型
@@ -1345,7 +1348,7 @@ router.get('/gis-map', async (req: Request, res: Response) => {
         END as store_type,
         -- 门店状态颜色
         CASE 
-          WHEN s.status = N'营业中' THEN '#52c41a'
+          WHEN s.status = 'active' THEN '#52c41a'
           WHEN s.status = N'筹备中' THEN '#1890ff'
           WHEN s.status = N'拓展中' THEN '#faad14'
           ELSE '#d9d9d9'
@@ -1366,7 +1369,7 @@ router.get('/gis-map', async (req: Request, res: Response) => {
     // 统计不同类型门店数量
     const statsQuery = `
       SELECT 
-        COUNT(CASE WHEN s.status = N'营业中' THEN 1 END) as operating,
+        COUNT(CASE WHEN s.status = 'active' THEN 1 END) as operating,
         COUNT(CASE WHEN s.status = N'筹备中' THEN 1 END) as preparing,
         COUNT(CASE WHEN s.status = N'拓展中' THEN 1 END) as expanding,
         COUNT(CASE WHEN s.store_code LIKE 'RG_%' THEN 1 END) as potential,
@@ -1496,7 +1499,7 @@ router.get('/city-sales-trend', async (req: Request, res: Response) => {
         SUM(CASE WHEN CAST(o.created_at AS DATE) >= CAST(DATEADD(day, -7, GETDATE()) AS DATE) THEN o.total_amount ELSE 0 END) as recent_revenue_7d
       FROM stores s
       LEFT JOIN orders o ON s.id = o.store_id AND o.delflag = 0 AND o.pay_state = 2
-      WHERE s.delflag = 0 AND s.status = N'营业中'
+      WHERE s.delflag = 0 AND s.status = 'active'
       GROUP BY s.city, s.province
       ORDER BY total_revenue DESC
     `;
@@ -1639,7 +1642,7 @@ router.get('/real-time-stats', async (req: Request, res: Response) => {
     const query = `
       SELECT 
         COUNT(DISTINCT s.id) as total_stores,
-        COUNT(DISTINCT CASE WHEN s.status = N'营业中' THEN s.id END) as operating_stores,
+        COUNT(DISTINCT CASE WHEN s.status = 'active' THEN s.id END) as operating_stores,
         COUNT(DISTINCT CASE WHEN s.status = N'筹备中' THEN s.id END) as preparing_stores,
         COUNT(DISTINCT o.id) as total_orders,
         SUM(o.total_amount) as total_revenue,

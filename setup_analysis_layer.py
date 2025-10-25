@@ -59,11 +59,11 @@ def main():
     print("ETL分析层设置脚本")
     print("=" * 50)
     
-    # 设置环境变量以使用Docker容器
-    os.environ['MSSQL_HOST'] = 'localhost'
+    # 设置环境变量以使用RDS
+    os.environ['MSSQL_HOST'] = 'rm-uf660d00xovkm3067.sqlserver.rds.aliyuncs.com'
     os.environ['MSSQL_PORT'] = '1433'
-    os.environ['MSSQL_USER'] = 'sa'
-    os.environ['MSSQL_PASS'] = 'YourStrong@Passw0rd'
+    os.environ['MSSQL_USER'] = 'hotdog'
+    os.environ['MSSQL_PASS'] = 'Zhkj@62102218'
     
     # 检查数据库连接
     try:

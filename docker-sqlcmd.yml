@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  # SQL Server工具容器
+  sqlcmd:
+    image: mcr.microsoft.com/mssql-tools:latest
+    container_name: yykhotdog_sqlcmd
+    platform: linux/amd64
+    volumes:
+      - ./database:/backup
+      - ./scripts:/scripts
+    working_dir: /backup
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    environment:
+      - ACCEPT_EULA=Y
+    networks:
+      - yykhotdog_network
+
+networks:
+  yykhotdog_network:
+    driver: bridge

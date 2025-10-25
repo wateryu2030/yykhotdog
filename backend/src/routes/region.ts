@@ -69,7 +69,8 @@ router.get('/cascade', async (req: Request, res: Response) => {
 // 获取地区统计信息
 router.get('/statistics', async (req: Request, res: Response) => {
   try {
-    const query = `
+    // 获取区域层级统计
+    const regionQuery = `
       SELECT 
         level,
         COUNT(*) as count
@@ -79,13 +80,39 @@ router.get('/statistics', async (req: Request, res: Response) => {
       ORDER BY level
     `;
 
-    const stats = await sequelize.query(query, {
+    const regionStats = await sequelize.query(regionQuery, {
       type: QueryTypes.SELECT
     });
 
+    // 获取实际运营统计
+    const operatingQuery = `
+      SELECT 
+        COUNT(DISTINCT CASE WHEN city IS NOT NULL AND city != '' THEN city END) as operating_cities,
+        COUNT(DISTINCT CASE WHEN province IS NOT NULL AND province != '' THEN province END) as operating_provinces,
+        COUNT(*) as operating_stores
+      FROM stores 
+      WHERE delflag = 0 AND status = 'active'
+    `;
+
+    const operatingStats = await sequelize.query(operatingQuery, {
+      type: QueryTypes.SELECT
+    });
+
+    // 合并数据
+    const operatingData = operatingStats[0] as any;
+    const result = [
+      ...regionStats,
+      {
+        level: 'operating',
+        operating_cities: operatingData?.operating_cities || 0,
+        operating_provinces: operatingData?.operating_provinces || 0,
+        operating_stores: operatingData?.operating_stores || 0
+      }
+    ];
+
     res.json({
       success: true,
-      data: stats
+      data: result
     });
   } catch (error) {
     console.error('获取地区统计信息失败:', error);
