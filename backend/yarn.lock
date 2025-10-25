@@ -4427,6 +4427,11 @@ open@^8.0.0:
     is-docker "^2.1.1"
     is-wsl "^2.2.0"
 
+openai@^6.7.0:
+  version "6.7.0"
+  resolved "https://registry.npmjs.org/openai/-/openai-6.7.0.tgz"
+  integrity sha512-mgSQXa3O/UXTbA8qFzoa7aydbXBJR5dbLQXCRapAOtoNT+v69sLdKMZzgiakpqhclRnhPggPAXoniVGn2kMY2A==
+
 openapi-types@>=7:
   version "12.1.3"
   resolved "https://registry.npmjs.org/openapi-types/-/openapi-types-12.1.3.tgz"

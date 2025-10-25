@@ -24,6 +24,7 @@ import operationsRoutes from './routes/operations';
 import salesPredictionRoutes from './routes/salesPrediction';
 import etlManagementRoutes from './routes/etlManagement';
 import aiInsightsRoutes from './routes/aiInsights';
+import aiAssistantRoutes from './routes/aiAssistant';
 
 // 加载环境变量 - 修复路径
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -88,6 +89,7 @@ app.use('/api/operations', operationsRoutes);
 app.use('/api/sales-prediction', salesPredictionRoutes);
 app.use('/api/etl-management', etlManagementRoutes);
 app.use('/api/ai-insights', aiInsightsRoutes);
+app.use('/api/ai-assistant', aiAssistantRoutes);
 
 // 错误处理
 app.use(notFoundHandler);
