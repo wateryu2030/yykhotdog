@@ -90,6 +90,11 @@ const Layout: React.FC = () => {
       icon: <RobotOutlined />,
       label: 'AI智能洞察',
     },
+    {
+      key: '/ai-assistant',
+      icon: <RobotOutlined />,
+      label: 'AI开发助手',
+    },
   ];
 
   const handleMenuClick = ({ key }: { key: string }) => {

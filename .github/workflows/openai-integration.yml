@@ -1,0 +1,72 @@
+name: OpenAI Integration Development
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  openai-integration:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: |
+        cd backend && npm install
+        cd ../frontend && npm install
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install Python dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install openai python-dotenv
+        
+    - name: Setup OpenAI Integration
+      run: |
+        echo "Setting up OpenAI integration for development..."
+        echo "OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}" >> .env
+        echo "OPENAI_ORG_ID=${{ secrets.OPENAI_ORG_ID }}" >> .env
+        
+    - name: Test OpenAI Integration
+      run: |
+        python -c "
+        import openai
+        import os
+        from dotenv import load_dotenv
+        
+        load_dotenv()
+        
+        # Test OpenAI API connection
+        try:
+            client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+            print('✅ OpenAI API connection successful')
+        except Exception as e:
+            print(f'❌ OpenAI API connection failed: {e}')
+        "
+        
+    - name: Build and Test
+      run: |
+        cd backend && npm run build
+        cd ../frontend && npm run build
+        
+    - name: Deploy to GitHub Pages
+      if: github.ref == 'refs/heads/main'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./frontend/build
