@@ -1,9 +1,12 @@
 # 阿里云RDS数据恢复命令
 # 请复制以下命令到您的终端执行
 
+# 阿里云RDS数据恢复命令
+# 请复制以下命令到您的终端执行
+
 # 1. 设置环境变量
-export ALIYUN_ACCESS_KEY_ID='LTAI5t7ducEY4P89fCzZyXWx'
-export ALIYUN_ACCESS_KEY_SECRET='xCUS1ftOEBa7UOuuelLqX57kliWGGn'
+export ALIYUN_ACCESS_KEY_ID='your-access-key-id'
+export ALIYUN_ACCESS_KEY_SECRET='your-access-key-secret'
 
 # 2. 检查RDS实例状态
 aliyun rds DescribeDBInstances --DBInstanceId rm-uf660d00xovkm3067

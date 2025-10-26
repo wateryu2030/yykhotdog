@@ -19,8 +19,8 @@ class AliyunRDSRestore:
         """初始化阿里云客户端"""
         # 阿里云配置
         self.region_id = 'cn-hangzhou'
-        self.access_key_id = os.getenv('ALIYUN_ACCESS_KEY_ID', 'LTAI5t7ducEY4P89fCzZyXWx')
-        self.access_key_secret = os.getenv('ALIYUN_ACCESS_KEY_SECRET', 'xCUS1ftOEBa7UOuuelLqX57kliWGGn')
+        self.access_key_id = os.getenv('ALIYUN_ACCESS_KEY_ID', 'your-access-key-id')
+        self.access_key_secret = os.getenv('ALIYUN_ACCESS_KEY_SECRET', 'your-access-key-secret')
         self.rds_instance_id = 'rm-uf660d00xovkm3067'
         
         # OSS配置 - 使用临时存储桶

@@ -10,8 +10,8 @@ from pathlib import Path
 
 class SimpleAliyunCLI:
     def __init__(self):
-        self.access_key_id = 'LTAI5t7ducEY4P89fCzZyXWx'
-        self.access_key_secret = 'xCUS1ftOEBa7UOuuelLqX57kliWGGn'
+        self.access_key_id = os.getenv('ALIYUN_ACCESS_KEY_ID', 'your-access-key-id')
+        self.access_key_secret = os.getenv('ALIYUN_ACCESS_KEY_SECRET', 'your-access-key-secret')
         self.region_id = 'cn-hangzhou'
         self.rds_instance_id = 'rm-uf660d00xovkm3067'
     
