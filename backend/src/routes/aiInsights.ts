@@ -195,12 +195,16 @@ router.get('/dashboard-metrics', async (req: Request, res: Response) => {
 
     const [results] = await sequelize.query(`
       SELECT 
-        SUM(revenue) as total_revenue,
-        SUM(orders_cnt) as total_orders,
-        AVG(revenue / NULLIF(orders_cnt, 0)) as avg_order_value,
-        COUNT(DISTINCT store_id) as unique_stores
-      FROM vw_kpi_store_daily
-      WHERE date_key >= CONVERT(int, FORMAT(DATEADD(day, -30, GETDATE()), 'yyyyMMdd'))
+        ISNULL(SUM(o.total_amount), 0) as total_revenue,
+        COUNT(o.id) as total_orders,
+        ISNULL(AVG(o.total_amount), 0) as avg_order_value,
+        COUNT(DISTINCT s.id) as unique_stores
+      FROM stores s
+      LEFT JOIN orders o ON s.id = o.store_id 
+        AND o.delflag = 0 
+        AND o.pay_state = 2
+        AND CAST(o.created_at AS DATE) >= DATEADD(day, -30, GETDATE())
+      WHERE s.delflag = 0 AND s.status = 'active'
     `);
 
     res.json({
@@ -253,32 +257,34 @@ router.get('/insights', async (req: Request, res: Response) => {
     const insights = [];
 
     // 利润洞察
-    if (profitData[0] && (profitData[0] as any).avg_margin < 30) {
+    if (profitData[0] && (profitData[0] as any).avg_margin !== null && (profitData[0] as any).avg_margin < 30) {
       insights.push({
         type: 'warning',
         title: '毛利率偏低',
-        description: `平均毛利率仅${(profitData[0] as any).avg_margin.toFixed(1)}%，建议优化成本结构`,
+        description: `平均毛利率仅${((profitData[0] as any).avg_margin || 0).toFixed(1)}%，建议优化成本结构`,
         priority: 'high'
       });
     }
 
     // 客户洞察
-    if (customerData[0]) {
-      const vipRatio = ((customerData[0] as any).vip_customers / (customerData[0] as any).total_customers * 100).toFixed(1);
+    if (customerData[0] && (customerData[0] as any).total_customers > 0) {
+      const vipCustomers = (customerData[0] as any).vip_customers || 0;
+      const totalCustomers = (customerData[0] as any).total_customers || 1;
+      const vipRatio = (vipCustomers / totalCustomers * 100).toFixed(1);
       insights.push({
         type: 'info',
         title: 'VIP客户分析',
-        description: `VIP客户占比${vipRatio}%，共${(customerData[0] as any).vip_customers}人`,
+        description: `VIP客户占比${vipRatio}%，共${vipCustomers}人`,
         priority: 'medium'
       });
     }
 
     // 预测洞察
-    if (forecastData[0] && (forecastData[0] as any).avg_forecast > 0) {
+    if (forecastData[0] && (forecastData[0] as any).avg_forecast !== null && (forecastData[0] as any).avg_forecast > 0) {
       insights.push({
         type: 'success',
         title: '销售预测',
-        description: `未来7天平均预测销售额¥${(forecastData[0] as any).avg_forecast.toFixed(2)}`,
+        description: `未来7天平均预测销售额¥${((forecastData[0] as any).avg_forecast || 0).toFixed(2)}`,
         priority: 'low'
       });
     }

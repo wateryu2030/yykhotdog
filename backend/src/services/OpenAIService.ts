@@ -10,17 +10,40 @@ export class OpenAIService {
   private model: string;
 
   constructor() {
-    this.client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      organization: process.env.OPENAI_ORG_ID,
-    });
+    // 只有在有API密钥时才初始化OpenAI客户端
+    if (process.env.OPENAI_API_KEY) {
+      this.client = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+        organization: process.env.OPENAI_ORG_ID,
+      });
+    } else {
+      this.client = null as any; // 临时设置为null，后续会检查
+    }
     this.model = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+  }
+
+  /**
+   * 检查OpenAI是否可用
+   */
+  private checkOpenAI(): boolean {
+    if (!this.client) {
+      logger.warn('OpenAI API密钥未配置，请在.env文件中设置OPENAI_API_KEY');
+      return false;
+    }
+    return true;
   }
 
   /**
    * 代码审查
    */
   async reviewCode(code: string, language: string = 'typescript'): Promise<any> {
+    if (!this.checkOpenAI()) {
+      return {
+        success: false,
+        error: 'OpenAI API密钥未配置',
+        suggestion: '请在.env文件中设置OPENAI_API_KEY环境变量'
+      };
+    }
     try {
       const prompt = `
 请审查以下${language}代码，提供改进建议：

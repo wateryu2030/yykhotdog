@@ -803,12 +803,29 @@ router.get('/hourly-stats/:storeId', async (req: Request, res: Response) => {
     let dateCondition = '';
     const params: any = { storeId: parseInt(storeId) };
     
-    if (timeType === 'today') {
-      dateCondition = 'AND CAST(o.created_at AS DATE) = CAST(GETDATE() AS DATE)';
-    } else if (startDate && endDate) {
+    if (startDate && endDate) {
       dateCondition = 'AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate';
       params.startDate = startDate;
       params.endDate = endDate;
+    } else {
+      // 自动查找该门店有数据的最近日期
+      const latestDateQuery = `
+        SELECT TOP 1 CAST(created_at AS DATE) as latest_date
+        FROM orders 
+        WHERE store_id = :storeId AND delflag = 0 AND pay_state = 2
+        ORDER BY created_at DESC
+      `;
+      
+      const latestDateResult = await sequelize.query(latestDateQuery, {
+        type: QueryTypes.SELECT,
+        replacements: { storeId: parseInt(storeId) }
+      });
+      
+      const latestDate = latestDateResult[0] as any;
+      const targetDate = latestDate?.latest_date || new Date().toISOString().split('T')[0];
+      
+      dateCondition = 'AND CAST(o.created_at AS DATE) = :targetDate';
+      params.targetDate = targetDate;
     }
     
     const query = `
@@ -853,12 +870,29 @@ router.get('/payment-stats/:storeId', async (req: Request, res: Response) => {
     let dateCondition = '';
     const params: any = { storeId: parseInt(storeId) };
     
-    if (timeType === 'today') {
-      dateCondition = 'AND CAST(o.created_at AS DATE) = CAST(GETDATE() AS DATE)';
-    } else if (startDate && endDate) {
+    if (startDate && endDate) {
       dateCondition = 'AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate';
       params.startDate = startDate;
       params.endDate = endDate;
+    } else {
+      // 自动查找该门店有数据的最近日期
+      const latestDateQuery = `
+        SELECT TOP 1 CAST(created_at AS DATE) as latest_date
+        FROM orders 
+        WHERE store_id = :storeId AND delflag = 0 AND pay_state = 2
+        ORDER BY created_at DESC
+      `;
+      
+      const latestDateResult = await sequelize.query(latestDateQuery, {
+        type: QueryTypes.SELECT,
+        replacements: { storeId: parseInt(storeId) }
+      });
+      
+      const latestDate = latestDateResult[0] as any;
+      const targetDate = latestDate?.latest_date || new Date().toISOString().split('T')[0];
+      
+      dateCondition = 'AND CAST(o.created_at AS DATE) = :targetDate';
+      params.targetDate = targetDate;
     }
     
     const query = `
@@ -903,12 +937,29 @@ router.get('/product-stats/:storeId', async (req: Request, res: Response) => {
     let dateCondition = '';
     const params: any = { storeId: parseInt(storeId) };
     
-    if (timeType === 'today') {
-      dateCondition = 'AND CAST(o.created_at AS DATE) = CAST(GETDATE() AS DATE)';
-    } else if (startDate && endDate) {
+    if (startDate && endDate) {
       dateCondition = 'AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate';
       params.startDate = startDate;
       params.endDate = endDate;
+    } else {
+      // 自动查找该门店有数据的最近日期
+      const latestDateQuery = `
+        SELECT TOP 1 CAST(created_at AS DATE) as latest_date
+        FROM orders 
+        WHERE store_id = :storeId AND delflag = 0 AND pay_state = 2
+        ORDER BY created_at DESC
+      `;
+      
+      const latestDateResult = await sequelize.query(latestDateQuery, {
+        type: QueryTypes.SELECT,
+        replacements: { storeId: parseInt(storeId) }
+      });
+      
+      const latestDate = latestDateResult[0] as any;
+      const targetDate = latestDate?.latest_date || new Date().toISOString().split('T')[0];
+      
+      dateCondition = 'AND CAST(o.created_at AS DATE) = :targetDate';
+      params.targetDate = targetDate;
     }
     
     // 先检查order_items表是否存在
@@ -971,12 +1022,20 @@ router.get('/overview', async (req: Request, res: Response) => {
   try {
     const { timeType = 'today' } = req.query;
     
-    // 使用固定日期避免复杂计算
-    let targetDate = new Date();
-    if (timeType === 'yesterday') {
-      targetDate.setDate(targetDate.getDate() - 1);
-    }
-    const dateStr = targetDate.toISOString().split('T')[0];
+    // 获取最近有数据的日期
+    const latestDateQuery = `
+      SELECT TOP 1 CAST(created_at AS DATE) as latest_date
+      FROM orders 
+      WHERE delflag = 0 AND pay_state = 2
+      ORDER BY created_at DESC
+    `;
+    
+    const latestDateResult = await sequelize.query(latestDateQuery, {
+      type: QueryTypes.SELECT
+    });
+    
+    const latestDate = latestDateResult[0] as any;
+    const dateStr = latestDate?.latest_date || new Date().toISOString().split('T')[0];
     
     // 超简查询 - 只查询最基本的统计数据
     const basicStatsQuery = `
@@ -988,6 +1047,13 @@ router.get('/overview', async (req: Request, res: Response) => {
       WHERE delflag = 0 
         AND pay_state = 2
         AND CAST(created_at AS DATE) = :targetDate
+    `;
+    
+    // 查询客户总数
+    const customerStatsQuery = `
+      SELECT COUNT(*) as total_customers
+      FROM customers 
+      WHERE delflag = 0
     `;
     
     // 门店统计查询 - 包含城市统计
@@ -1007,20 +1073,25 @@ router.get('/overview', async (req: Request, res: Response) => {
       replacements: { targetDate: dateStr }
     });
     
+    const customerResult = await sequelize.query(customerStatsQuery, {
+      type: QueryTypes.SELECT
+    });
+    
     const storeResult = await sequelize.query(storeStatsQuery, {
       type: QueryTypes.SELECT
     });
     
     const today = todayResult[0] as any;
+    const customerStats = customerResult[0] as any;
     const storeStats = storeResult[0] as any;
     
-    // 返回极简的数据结构
+    // 返回修复的数据结构
     const overviewData = {
       kpis: {
         sales: today?.total_sales || 0,
         totalOrders: today?.total_orders || 0,
         avgOrderValue: today?.avg_order_value || 0,
-        totalCustomers: 0, // 简化，不查询客户数
+        totalCustomers: customerStats?.total_customers || 0,
         operatingStores: storeStats?.operating_stores || 0,
         operatingCities: storeStats?.operating_cities || 0,
         operatingProvinces: storeStats?.operating_provinces || 0
@@ -1065,10 +1136,25 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
       dateCondition = 'AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate';
       params.startDate = startDate;
       params.endDate = endDate;
-    } else if (timeType === 'today') {
-      dateCondition = 'AND CAST(o.created_at AS DATE) = CAST(GETDATE() AS DATE)';
-    } else if (timeType === 'yesterday') {
-      dateCondition = 'AND CAST(o.created_at AS DATE) = CAST(DATEADD(day, -1, GETDATE()) AS DATE)';
+    } else {
+      // 自动查找该门店有数据的最近日期
+      const latestDateQuery = `
+        SELECT TOP 1 CAST(created_at AS DATE) as latest_date
+        FROM orders 
+        WHERE store_id = :storeId AND delflag = 0 AND pay_state = 2
+        ORDER BY created_at DESC
+      `;
+      
+      const latestDateResult = await sequelize.query(latestDateQuery, {
+        type: QueryTypes.SELECT,
+        replacements: { storeId: parseInt(storeId) }
+      });
+      
+      const latestDate = latestDateResult[0] as any;
+      const targetDate = latestDate?.latest_date || new Date().toISOString().split('T')[0];
+      
+      dateCondition = 'AND CAST(o.created_at AS DATE) = :targetDate';
+      params.targetDate = targetDate;
     }
     
     // 获取门店基本信息
@@ -1828,6 +1914,71 @@ router.get('/province-analysis', async (req: Request, res: Response) => {
       success: false,
       error: '获取省份分析失败',
       details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// 获取支付方式统计 - 通用版本
+router.get('/payment-stats', async (req: Request, res: Response) => {
+  try {
+    const { startDate, endDate, timeType = 'today' } = req.query;
+    
+    // 获取最近有数据的日期
+    const latestDateQuery = `
+      SELECT TOP 1 CAST(created_at AS DATE) as latest_date
+      FROM orders 
+      WHERE delflag = 0 AND pay_state = 2
+      ORDER BY created_at DESC
+    `;
+    
+    const latestDateResult = await sequelize.query(latestDateQuery, {
+      type: QueryTypes.SELECT
+    });
+    
+    const latestDate = latestDateResult[0] as any;
+    const targetDate = latestDate?.latest_date || new Date().toISOString().split('T')[0];
+    
+    const query = `
+      SELECT 
+        CASE 
+          WHEN pay_mode = 1 THEN '现金支付'
+          WHEN pay_mode = 2 THEN '微信支付'
+          WHEN pay_mode = 3 THEN '支付宝支付'
+          WHEN pay_mode = 4 THEN '银行卡支付'
+          ELSE '其他支付'
+        END as payment_method,
+        COUNT(*) as order_count,
+        SUM(total_amount) as total_amount,
+        AVG(total_amount) as avg_amount,
+        COUNT(*) * 100.0 / SUM(COUNT(*)) OVER() as percentage
+      FROM orders 
+      WHERE delflag = 0 
+        AND pay_state = 2
+        AND CAST(created_at AS DATE) = :targetDate
+      GROUP BY pay_mode
+      ORDER BY order_count DESC
+    `;
+
+    const result = await sequelize.query(query, {
+      type: QueryTypes.SELECT,
+      replacements: { targetDate: targetDate }
+    });
+
+    res.json({
+      success: true,
+      data: result,
+      summary: {
+        date: targetDate,
+        totalOrders: result.reduce((sum: number, item: any) => sum + item.order_count, 0),
+        totalAmount: result.reduce((sum: number, item: any) => sum + (item.total_amount || 0), 0)
+      }
+    });
+  } catch (error) {
+    console.error('获取支付方式统计失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '获取支付方式统计失败',
+      details: error instanceof Error ? error.message : '未知错误'
     });
   }
 });

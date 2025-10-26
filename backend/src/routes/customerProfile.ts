@@ -302,15 +302,69 @@ router.get('/cities', async (req: Request, res: Response) => {
         store_count
       FROM (
         SELECT DISTINCT
-          s.city,
-          s.province,
-          COUNT(*) OVER (PARTITION BY s.city) as store_count
+          CASE 
+            WHEN s.city IS NOT NULL AND s.city != '' THEN s.city
+            WHEN s.store_name LIKE '%大连%' THEN '大连市'
+            WHEN s.store_name LIKE '%沈阳%' THEN '沈阳市'
+            WHEN s.store_name LIKE '%鞍山%' THEN '鞍山市'
+            WHEN s.store_name LIKE '%抚顺%' THEN '抚顺市'
+            WHEN s.store_name LIKE '%本溪%' THEN '本溪市'
+            WHEN s.store_name LIKE '%丹东%' THEN '丹东市'
+            WHEN s.store_name LIKE '%锦州%' THEN '锦州市'
+            WHEN s.store_name LIKE '%营口%' THEN '营口市'
+            WHEN s.store_name LIKE '%阜新%' THEN '阜新市'
+            WHEN s.store_name LIKE '%辽阳%' THEN '辽阳市'
+            WHEN s.store_name LIKE '%盘锦%' THEN '盘锦市'
+            WHEN s.store_name LIKE '%铁岭%' THEN '铁岭市'
+            WHEN s.store_name LIKE '%朝阳%' THEN '朝阳市'
+            WHEN s.store_name LIKE '%葫芦岛%' THEN '葫芦岛市'
+            WHEN s.store_name LIKE '%西安%' THEN '西安市'
+            WHEN s.store_name LIKE '%北京%' THEN '北京市'
+            WHEN s.store_name LIKE '%上海%' THEN '上海市'
+            WHEN s.store_name LIKE '%广州%' THEN '广州市'
+            WHEN s.store_name LIKE '%深圳%' THEN '深圳市'
+            ELSE '其他城市'
+          END as city,
+          CASE 
+            WHEN s.province IS NOT NULL AND s.province != '' THEN s.province
+            WHEN s.store_name LIKE '%大连%' OR s.store_name LIKE '%沈阳%' OR s.store_name LIKE '%鞍山%' OR s.store_name LIKE '%抚顺%' OR s.store_name LIKE '%本溪%' OR s.store_name LIKE '%丹东%' OR s.store_name LIKE '%锦州%' OR s.store_name LIKE '%营口%' OR s.store_name LIKE '%阜新%' OR s.store_name LIKE '%辽阳%' OR s.store_name LIKE '%盘锦%' OR s.store_name LIKE '%铁岭%' OR s.store_name LIKE '%朝阳%' OR s.store_name LIKE '%葫芦岛%' THEN '辽宁省'
+            WHEN s.store_name LIKE '%西安%' THEN '陕西省'
+            WHEN s.store_name LIKE '%北京%' THEN '北京市'
+            WHEN s.store_name LIKE '%上海%' THEN '上海市'
+            WHEN s.store_name LIKE '%广州%' THEN '广东省'
+            WHEN s.store_name LIKE '%深圳%' THEN '广东省'
+            ELSE '其他省份'
+          END as province,
+          COUNT(*) OVER (PARTITION BY 
+            CASE 
+              WHEN s.city IS NOT NULL AND s.city != '' THEN s.city
+              WHEN s.store_name LIKE '%大连%' THEN '大连市'
+              WHEN s.store_name LIKE '%沈阳%' THEN '沈阳市'
+              WHEN s.store_name LIKE '%鞍山%' THEN '鞍山市'
+              WHEN s.store_name LIKE '%抚顺%' THEN '抚顺市'
+              WHEN s.store_name LIKE '%本溪%' THEN '本溪市'
+              WHEN s.store_name LIKE '%丹东%' THEN '丹东市'
+              WHEN s.store_name LIKE '%锦州%' THEN '锦州市'
+              WHEN s.store_name LIKE '%营口%' THEN '营口市'
+              WHEN s.store_name LIKE '%阜新%' THEN '阜新市'
+              WHEN s.store_name LIKE '%辽阳%' THEN '辽阳市'
+              WHEN s.store_name LIKE '%盘锦%' THEN '盘锦市'
+              WHEN s.store_name LIKE '%铁岭%' THEN '铁岭市'
+              WHEN s.store_name LIKE '%朝阳%' THEN '朝阳市'
+              WHEN s.store_name LIKE '%葫芦岛%' THEN '葫芦岛市'
+              WHEN s.store_name LIKE '%西安%' THEN '西安市'
+              WHEN s.store_name LIKE '%北京%' THEN '北京市'
+              WHEN s.store_name LIKE '%上海%' THEN '上海市'
+              WHEN s.store_name LIKE '%广州%' THEN '广州市'
+              WHEN s.store_name LIKE '%深圳%' THEN '深圳市'
+              ELSE '其他城市'
+            END
+          ) as store_count
         FROM stores s
         WHERE s.delflag = 0 
-          AND s.city IS NOT NULL 
-          AND s.city != ''
-          AND s.status = N'营业中'
+          AND s.status = 'active'
       ) AS city_list
+      WHERE city != '其他城市'
       ORDER BY city
     `;
 

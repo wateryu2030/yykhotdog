@@ -4,6 +4,43 @@ import { QueryTypes } from 'sequelize';
 
 const router = Router();
 
+// 测试API：获取门店历史小时销售数据
+router.get('/test-hourly-data/:storeId', async (req: Request, res: Response) => {
+  try {
+    const { storeId } = req.params;
+    
+    const hourlyHistoryQuery = `
+      SELECT 
+        DATEPART(hour, created_at) as hour,
+        COUNT(*) as order_count,
+        SUM(total_amount) as total_sales
+      FROM orders 
+      WHERE store_id = :storeId 
+        AND delflag = 0 
+        AND pay_state = 2
+        AND created_at >= DATEADD(day, -30, GETDATE())
+      GROUP BY DATEPART(hour, created_at)
+      ORDER BY hour
+    `;
+    
+    const hourlyHistory = await sequelize.query(hourlyHistoryQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { storeId: parseInt(storeId) }
+    });
+    
+    res.json({
+      success: true,
+      data: hourlyHistory,
+      message: `门店${storeId}的历史小时销售数据`
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
 // 获取销售预测数据
 router.get('/predictions/:storeId', async (req: Request, res: Response) => {
   try {
@@ -131,7 +168,7 @@ router.get('/predictions/:storeId', async (req: Request, res: Response) => {
       const dateStr = date.toISOString().split('T')[0];
       
       const dayOfWeek = date.getDay(); // 0=周日, 1=周一, ..., 6=周六
-      const prediction = generateDayPrediction(dateStr, dayOfWeek, i, predictionParams, historyData);
+      const prediction = await generateDayPrediction(dateStr, dayOfWeek, i, predictionParams, historyData, storeInfo.id);
       
       predictions.push(prediction);
     }
@@ -273,7 +310,7 @@ function calculatePredictionParameters(historyData: any[], recentData: any[], st
 }
 
 // 生成单日预测
-function generateDayPrediction(dateStr: string, dayOfWeek: number, dayIndex: number, params: any, historyData: any[]) {
+async function generateDayPrediction(dateStr: string, dayOfWeek: number, dayIndex: number, params: any, historyData: any[], storeId: number) {
   const { factors, weights, baseValues } = params;
   
   // 如果没有基础值，返回错误
@@ -362,7 +399,7 @@ function generateDayPrediction(dateStr: string, dayOfWeek: number, dayIndex: num
   
   // 生成24小时预测数据
   console.log('开始生成24小时预测数据...');
-  const hourlyBreakdown = generateHourlyBreakdown(predictedSales, predictedOrders, dayOfWeek, confidence);
+  const hourlyBreakdown = await generateHourlyBreakdown(predictedSales, predictedOrders, dayOfWeek, confidence, historyData, storeId);
   console.log('24小时预测数据生成完成，长度:', hourlyBreakdown.length);
   
   console.log('生成24小时预测数据:', {
@@ -1017,10 +1054,59 @@ router.get('/comparison/:storeId', async (req: Request, res: Response) => {
 });
 
 // 生成24小时预测数据
-function generateHourlyBreakdown(dailySales: number, dailyOrders: number, dayOfWeek: number, baseConfidence: number) {
+async function generateHourlyBreakdown(dailySales: number, dailyOrders: number, dayOfWeek: number, baseConfidence: number, historyData: any[], storeId: number) {
   const hourlyData = [];
   
-  // 定义一天中不同时段的销售模式
+  // 首先尝试从历史数据中获取该门店的实际小时销售模式
+  let actualHourlyPattern = null;
+  
+  console.log('generateHourlyBreakdown - storeId:', storeId, 'historyData:', historyData?.length || 0, '条记录');
+  
+  if (storeId) {
+    try {
+      // 查询该门店的历史小时销售数据
+      const hourlyHistoryQuery = `
+        SELECT 
+          DATEPART(hour, created_at) as hour,
+          COUNT(*) as order_count,
+          SUM(total_amount) as total_sales
+        FROM orders 
+        WHERE store_id = :storeId 
+          AND delflag = 0 
+          AND pay_state = 2
+          AND created_at >= DATEADD(day, -30, GETDATE())
+        GROUP BY DATEPART(hour, created_at)
+        ORDER BY hour
+      `;
+      
+      const hourlyHistory = await sequelize.query(hourlyHistoryQuery, {
+        type: QueryTypes.SELECT,
+        replacements: { storeId: storeId }
+      });
+      
+      console.log(`门店${storeId}历史小时数据查询结果:`, hourlyHistory?.length || 0, '条记录');
+      
+      if (hourlyHistory && hourlyHistory.length > 0) {
+        // 计算每个小时的平均销售比例
+        const totalSales = hourlyHistory.reduce((sum: number, item: any) => sum + (item.total_sales || 0), 0);
+        const totalOrders = hourlyHistory.reduce((sum: number, item: any) => sum + (item.order_count || 0), 0);
+        
+        if (totalSales > 0 && totalOrders > 0) {
+          actualHourlyPattern = hourlyHistory.map((item: any) => ({
+            hour: item.hour,
+            salesRatio: (item.total_sales || 0) / totalSales,
+            ordersRatio: (item.order_count || 0) / totalOrders
+          }));
+          
+          console.log(`使用门店${storeId}的实际历史销售模式，数据点: ${hourlyHistory.length}`);
+        }
+      }
+    } catch (error) {
+      console.log('获取历史小时数据失败，使用默认模式:', error);
+    }
+  }
+  
+  // 如果没有实际数据，使用默认模式
   const hourlyPatterns = {
     // 工作日模式
     weekday: [
@@ -1078,24 +1164,55 @@ function generateHourlyBreakdown(dailySales: number, dailyOrders: number, dayOfW
     ]
   };
   
-  // 选择模式（工作日或周末）
-  const pattern = (dayOfWeek >= 1 && dayOfWeek <= 5) ? hourlyPatterns.weekday : hourlyPatterns.weekend;
+  // 选择模式（优先使用实际历史数据）
+  let pattern;
+  let useActualData = false;
+  
+  if (actualHourlyPattern && actualHourlyPattern.length > 0) {
+    // 使用实际历史数据
+    pattern = actualHourlyPattern;
+    useActualData = true;
+    console.log('使用门店实际历史销售模式');
+  } else {
+    // 使用默认模式
+    pattern = (dayOfWeek >= 1 && dayOfWeek <= 5) ? hourlyPatterns.weekday : hourlyPatterns.weekend;
+    console.log('使用默认销售模式');
+  }
   
   for (let hour = 0; hour < 24; hour++) {
-    const hourPattern = pattern[hour];
+    // 查找该小时的数据
+    let hourPattern = pattern.find(p => p.hour === hour);
+    
+    // 如果没有该小时的数据，使用0（表示该门店在该时段没有销售）
+    if (!hourPattern) {
+      hourPattern = { hour: hour, salesRatio: 0, ordersRatio: 0 };
+    }
+    
     const hourlySales = Math.round(dailySales * hourPattern.salesRatio);
     const hourlyOrders = Math.round(dailyOrders * hourPattern.ordersRatio);
     
-    // 计算小时置信度（基于基础置信度和时段特征）
+    // 计算小时置信度
     let hourConfidence = baseConfidence;
     
-    // 高峰时段置信度稍高
-    if (hourPattern.salesRatio > 0.1) {
-      hourConfidence += 0.05;
-    }
-    // 深夜时段置信度稍低
-    if (hourPattern.salesRatio < 0.02) {
-      hourConfidence -= 0.1;
+    if (useActualData) {
+      // 使用实际数据时，置信度更高
+      hourConfidence += 0.1;
+      
+      // 如果该时段有历史销售数据，置信度更高
+      if (hourPattern.salesRatio > 0) {
+        hourConfidence += 0.05;
+      } else {
+        // 如果该时段没有历史数据，置信度降低
+        hourConfidence -= 0.2;
+      }
+    } else {
+      // 使用默认模式时的置信度调整
+      if (hourPattern.salesRatio > 0.1) {
+        hourConfidence += 0.05;
+      }
+      if (hourPattern.salesRatio < 0.02) {
+        hourConfidence -= 0.1;
+      }
     }
     
     // 确保置信度在合理范围内
@@ -1324,6 +1441,191 @@ router.get('/overall-comparison', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: '获取总体对比数据失败'
+    });
+  }
+});
+
+// 获取小时级对比分析数据
+router.get('/hourly-comparison/:storeId', async (req: Request, res: Response) => {
+  try {
+    const { storeId } = req.params;
+    const { startDate, endDate, compareType = 'previous' } = req.query;
+    
+    if (!startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        error: '请提供开始日期和结束日期'
+      });
+    }
+
+    const currentStartDate = startDate as string;
+    const currentEndDate = endDate as string;
+    
+    // 计算对比期间
+    let compareStartDate: string;
+    let compareEndDate: string;
+    
+    if (compareType === 'previous') {
+      // 前一个相同长度的期间
+      const currentStart = new Date(currentStartDate);
+      const currentEnd = new Date(currentEndDate);
+      const periodDays = Math.ceil((currentEnd.getTime() - currentStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      
+      const previousEnd = new Date(currentStart);
+      previousEnd.setDate(previousEnd.getDate() - 1);
+      const previousStart = new Date(previousEnd);
+      previousStart.setDate(previousStart.getDate() - periodDays + 1);
+      
+      compareStartDate = previousStart.toISOString().split('T')[0];
+      compareEndDate = previousEnd.toISOString().split('T')[0];
+    } else if (compareType === 'same_period_last_year') {
+      // 去年同期
+      const currentStart = new Date(currentStartDate);
+      const currentEnd = new Date(currentEndDate);
+      
+      const lastYearStart = new Date(currentStart);
+      lastYearStart.setFullYear(lastYearStart.getFullYear() - 1);
+      
+      const lastYearEnd = new Date(currentEnd);
+      lastYearEnd.setFullYear(lastYearEnd.getFullYear() - 1);
+      
+      compareStartDate = lastYearStart.toISOString().split('T')[0];
+      compareEndDate = lastYearEnd.toISOString().split('T')[0];
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: '不支持的对比类型'
+      });
+    }
+
+    // 获取当前期间的小时级数据
+    const currentHourlyQuery = `
+      SELECT 
+        DATEPART(hour, created_at) as hour,
+        COUNT(*) as order_count,
+        SUM(total_amount) as total_sales,
+        AVG(total_amount) as avg_order_value,
+        COUNT(DISTINCT customer_id) as unique_customers
+      FROM orders 
+      WHERE store_id = :storeId 
+        AND delflag = 0
+        AND CAST(created_at AS DATE) BETWEEN :startDate AND :endDate
+      GROUP BY DATEPART(hour, created_at)
+      ORDER BY hour
+    `;
+
+    const currentHourlyData = await sequelize.query(currentHourlyQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { 
+        storeId: parseInt(storeId),
+        startDate: currentStartDate,
+        endDate: currentEndDate
+      }
+    });
+
+    // 获取对比期间的小时级数据
+    const compareHourlyData = await sequelize.query(currentHourlyQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { 
+        storeId: parseInt(storeId),
+        startDate: compareStartDate,
+        endDate: compareEndDate
+      }
+    });
+
+    // 创建24小时完整数据
+    const createHourlyData = (data: any[]) => {
+      const hourlyMap = new Map();
+      data.forEach((item: any) => {
+        hourlyMap.set(item.hour, {
+          hour: item.hour,
+          orderCount: parseInt(item.order_count || 0),
+          totalSales: parseFloat(item.total_sales || 0),
+          avgOrderValue: parseFloat(item.avg_order_value || 0),
+          uniqueCustomers: parseInt(item.unique_customers || 0)
+        });
+      });
+
+      const result = [];
+      for (let hour = 0; hour < 24; hour++) {
+        result.push(hourlyMap.get(hour) || {
+          hour,
+          orderCount: 0,
+          totalSales: 0,
+          avgOrderValue: 0,
+          uniqueCustomers: 0
+        });
+      }
+      return result;
+    };
+
+    const currentHourly = createHourlyData(currentHourlyData);
+    const compareHourly = createHourlyData(compareHourlyData);
+
+    // 计算对比数据
+    const comparisonData = currentHourly.map((current, index) => {
+      const compare = compareHourly[index];
+      const salesChange = current.totalSales - compare.totalSales;
+      const salesChangePercent = compare.totalSales > 0 ? (salesChange / compare.totalSales) * 100 : 0;
+      const ordersChange = current.orderCount - compare.orderCount;
+      const ordersChangePercent = compare.orderCount > 0 ? (ordersChange / compare.orderCount) * 100 : 0;
+
+      return {
+        hour: current.hour,
+        current: {
+          orderCount: current.orderCount,
+          totalSales: current.totalSales,
+          avgOrderValue: current.avgOrderValue,
+          uniqueCustomers: current.uniqueCustomers
+        },
+        compare: {
+          orderCount: compare.orderCount,
+          totalSales: compare.totalSales,
+          avgOrderValue: compare.avgOrderValue,
+          uniqueCustomers: compare.uniqueCustomers
+        },
+        comparison: {
+          salesChange,
+          salesChangePercent,
+          ordersChange,
+          ordersChangePercent,
+          trend: salesChangePercent > 5 ? 'up' : salesChangePercent < -5 ? 'down' : 'stable'
+        }
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        currentPeriod: {
+          startDate: currentStartDate,
+          endDate: currentEndDate
+        },
+        comparePeriod: {
+          startDate: compareStartDate,
+          endDate: compareEndDate,
+          type: compareType
+        },
+        hourlyComparison: comparisonData,
+        summary: {
+          totalSalesChange: comparisonData.reduce((sum, item) => sum + item.comparison.salesChange, 0),
+          totalOrdersChange: comparisonData.reduce((sum, item) => sum + item.comparison.ordersChange, 0),
+          avgSalesChangePercent: comparisonData.reduce((sum, item) => sum + item.comparison.salesChangePercent, 0) / 24,
+          peakHour: comparisonData.reduce((max, item) => 
+            item.current.totalSales > max.current.totalSales ? item : max, comparisonData[0]
+          ),
+          lowHour: comparisonData.reduce((min, item) => 
+            item.current.totalSales < min.current.totalSales ? item : min, comparisonData[0]
+          )
+        }
+      }
+    });
+  } catch (error) {
+    console.error('获取小时级对比数据失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '获取小时级对比数据失败',
+      details: error instanceof Error ? error.message : '未知错误'
     });
   }
 });
