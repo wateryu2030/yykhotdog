@@ -11,14 +11,14 @@ export enum POIType {
   MALL = 'mall',
   CINEMA = 'cinema',
   COMPETITOR = 'competitor',
-  COMPLEMENTARY = 'complementary'
+  COMPLEMENTARY = 'complementary',
 }
 
 // 数据源枚举
 export enum DataSource {
   AMAP = 'amap',
   BAIDU = 'baidu',
-  MANUAL = 'manual'
+  MANUAL = 'manual',
 }
 
 // POI数据属性接口
@@ -35,10 +35,14 @@ export interface POIDataAttributes {
 }
 
 // 创建POI数据时的可选属性
-export interface POIDataCreationAttributes extends Optional<POIDataAttributes, 'id' | 'created_at'> {}
+export interface POIDataCreationAttributes
+  extends Optional<POIDataAttributes, 'id' | 'created_at'> {}
 
 // POI数据模型类
-export class POIData extends Model<POIDataAttributes, POIDataCreationAttributes> implements POIDataAttributes {
+export class POIData
+  extends Model<POIDataAttributes, POIDataCreationAttributes>
+  implements POIDataAttributes
+{
   public id!: number;
   public poi_name!: string;
   public poi_type!: POIType;
@@ -115,4 +119,4 @@ POIData.init(
   }
 );
 
-export default POIData; 
+export default POIData;

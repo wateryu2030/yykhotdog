@@ -5,7 +5,7 @@ export const notFoundHandler = (req: Request, res: Response): void => {
     success: false,
     error: {
       message: `路由 ${req.originalUrl} 不存在`,
-      code: 'NOT_FOUND'
-    }
+      code: 'NOT_FOUND',
+    },
   });
-}; 
+};

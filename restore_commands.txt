@@ -1,0 +1,32 @@
+# 数据库恢复命令
+# 复制以下命令到终端执行
+
+# 1. 检查RDS实例状态
+aliyun rds DescribeDBInstances --DBInstanceId rm-uf660d00xovkm30678o --RegionId cn-hangzhou
+
+# 2. 恢复cyrg2025数据库
+# 注意：从OSS恢复需要先在阿里云控制台操作
+# 访问: https://rds.console.aliyun.com
+# 步骤：
+#   a. 选择实例: rm-uf660d00xovkm30678o
+#   b. 进入"备份恢复" -> "数据恢复"
+#   c. 选择"从OSS恢复"
+#   d. 选择备份文件: oss://yykhotdog-backup-temp/backups/cyrg2025-10-27.bak
+#   e. 恢复为数据库: cyrg2025
+#   f. 执行恢复
+
+# 3. 恢复cyrgweixin数据库  
+#   a. 选择实例: rm-uf660d00xovkm30678o
+#   b. 进入"备份恢复" -> "数据恢复"
+#   c. 选择"从OSS恢复"
+#   d. 选择备份文件: oss://yykhotdog-backup-temp/backups/zhkj2025-10-27.bak
+#   e. 恢复为数据库: cyrgweixin
+#   f. 执行恢复
+
+# 4. 验证恢复结果
+aliyun rds DescribeDatabases --DBInstanceId rm-uf660d00xovkm30678o --DBName cyrg2025
+aliyun rds DescribeDatabases --DBInstanceId rm-uf660d00xovkm30678o --DBName cyrgweixin
+
+# OSS备份文件位置：
+# - cyrg2025: oss://yykhotdog-backup-temp/backups/cyrg2025-10-27.bak
+# - cyrgweixin: oss://yykhotdog-backup-temp/backups/zhkj2025-10-27.bak

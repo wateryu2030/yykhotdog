@@ -13,11 +13,11 @@ router.get('/test', (req: Request, res: Response) => {
 router.get('/reverse-geocode', async (req: Request, res: Response) => {
   try {
     const { longitude, latitude } = req.query;
-    
+
     if (!longitude || !latitude) {
       return res.status(400).json({
         success: false,
-        message: '缺少经纬度参数'
+        message: '缺少经纬度参数',
       });
     }
 
@@ -28,13 +28,13 @@ router.get('/reverse-geocode', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
     logger.error('逆地理编码失败:', error);
     res.status(500).json({
       success: false,
-      message: '逆地理编码失败'
+      message: '逆地理编码失败',
     });
   }
 });
@@ -43,11 +43,11 @@ router.get('/reverse-geocode', async (req: Request, res: Response) => {
 router.get('/weather', async (req: Request, res: Response) => {
   try {
     const { city } = req.query;
-    
+
     if (!city) {
       return res.status(400).json({
         success: false,
-        message: '缺少城市参数'
+        message: '缺少城市参数',
       });
     }
 
@@ -55,13 +55,13 @@ router.get('/weather', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
     logger.error('天气查询失败:', error);
     res.status(500).json({
       success: false,
-      message: '天气查询失败'
+      message: '天气查询失败',
     });
   }
 });
@@ -73,7 +73,7 @@ router.get('/poi-search', async (req: Request, res: Response) => {
     if (!keyword || !city || !longitude || !latitude) {
       return res.status(400).json({
         success: false,
-        message: '缺少关键词、城市或经纬度参数'
+        message: '缺少关键词、城市或经纬度参数',
       });
     }
     const result = await AmapService.searchNearby(
@@ -83,13 +83,13 @@ router.get('/poi-search', async (req: Request, res: Response) => {
     );
     res.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
     logger.error('POI搜索失败:', error);
     res.status(500).json({
       success: false,
-      message: 'POI搜索失败'
+      message: 'POI搜索失败',
     });
   }
 });
@@ -98,14 +98,14 @@ router.get('/poi-search', async (req: Request, res: Response) => {
 router.get('/geocode', async (req: Request, res: Response) => {
   try {
     const { address } = req.query;
-    
+
     logger.info('地理编码请求参数:', { address, type: typeof address });
-    
+
     if (!address) {
       logger.error('缺少地址参数');
       return res.status(400).json({
         success: false,
-        message: '缺少地址参数'
+        message: '缺少地址参数',
       });
     }
 
@@ -117,14 +117,14 @@ router.get('/geocode', async (req: Request, res: Response) => {
     const queryParams = new URLSearchParams({
       key: apiKey,
       address: addressStr,
-      output: 'json'
+      output: 'json',
     });
 
     const response = await fetch(`https://restapi.amap.com/v3/geocode/geo?${queryParams}`, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; SiteSelection/1.0)',
-        'Accept': 'application/json'
-      }
+        Accept: 'application/json',
+      },
     });
 
     if (!response.ok) {
@@ -132,25 +132,25 @@ router.get('/geocode', async (req: Request, res: Response) => {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const data = await response.json() as any;
-    
+    const data = (await response.json()) as any;
+
     logger.info('地理编码API响应:', { status: data.status, info: data.info, count: data.count });
-    
+
     if (data.status !== '1') {
       logger.error('地理编码API返回错误:', { status: data.status, info: data.info });
       throw new Error(`地理编码失败: ${data.info}`);
     }
-    
+
     res.json({
       success: true,
-      data: data
+      data: data,
     });
   } catch (error) {
     logger.error('地理编码代理失败:', error);
     res.status(500).json({
       success: false,
       message: '地理编码失败',
-      error: error instanceof Error ? error.message : '未知错误'
+      error: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -159,11 +159,11 @@ router.get('/geocode', async (req: Request, res: Response) => {
 router.get('/poi', async (req: Request, res: Response) => {
   try {
     const { keywords, city, types, offset, page, extensions } = req.query;
-    
+
     if (!keywords || !city) {
       return res.status(400).json({
         success: false,
-        message: '缺少关键词或城市参数'
+        message: '缺少关键词或城市参数',
       });
     }
 
@@ -176,14 +176,14 @@ router.get('/poi', async (req: Request, res: Response) => {
       offset: (offset as string) || '20',
       page: (page as string) || '1',
       extensions: (extensions as string) || 'base',
-      output: 'json'
+      output: 'json',
     });
 
     const response = await fetch(`https://restapi.amap.com/v3/place/text?${queryParams}`, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; SiteSelection/1.0)',
-        'Accept': 'application/json'
-      }
+        Accept: 'application/json',
+      },
     });
 
     if (!response.ok) {
@@ -191,17 +191,17 @@ router.get('/poi', async (req: Request, res: Response) => {
     }
 
     const data = await response.json();
-    
+
     res.json({
       success: true,
-      data: data
+      data: data,
     });
   } catch (error) {
     logger.error('POI搜索代理失败:', error);
     res.status(500).json({
       success: false,
       message: 'POI搜索失败',
-      error: error instanceof Error ? error.message : '未知错误'
+      error: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -210,11 +210,11 @@ router.get('/poi', async (req: Request, res: Response) => {
 router.get('/poi-around', async (req: Request, res: Response) => {
   try {
     const { keywords, location, radius, types, offset, page, extensions } = req.query;
-    
+
     if (!keywords || !location) {
       return res.status(400).json({
         success: false,
-        message: '缺少关键词或位置参数'
+        message: '缺少关键词或位置参数',
       });
     }
 
@@ -228,14 +228,14 @@ router.get('/poi-around', async (req: Request, res: Response) => {
       offset: (offset as string) || '20',
       page: (page as string) || '1',
       extensions: (extensions as string) || 'base',
-      output: 'json'
+      output: 'json',
     });
 
     const response = await fetch(`https://restapi.amap.com/v3/place/around?${queryParams}`, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; SiteSelection/1.0)',
-        'Accept': 'application/json'
-      }
+        Accept: 'application/json',
+      },
     });
 
     if (!response.ok) {
@@ -243,19 +243,19 @@ router.get('/poi-around', async (req: Request, res: Response) => {
     }
 
     const data = await response.json();
-    
+
     res.json({
       success: true,
-      data: data
+      data: data,
     });
   } catch (error) {
     logger.error('POI地理围栏搜索代理失败:', error);
     res.status(500).json({
       success: false,
       message: 'POI地理围栏搜索失败',
-      error: error instanceof Error ? error.message : '未知错误'
+      error: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
 
-export default router; 
+export default router;

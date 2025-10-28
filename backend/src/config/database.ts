@@ -22,7 +22,7 @@ let cyrg2025Sequelize: Sequelize;
 if (useSQLite) {
   // 使用SQLite配置
   const sqlitePath = process.env.SQLITE_PATH || './database/dev.sqlite';
-  
+
   sequelize = new Sequelize({
     dialect: 'sqlite',
     storage: sqlitePath,
@@ -31,8 +31,8 @@ if (useSQLite) {
       max: 5,
       min: 0,
       acquire: 30000,
-      idle: 10000
-    }
+      idle: 10000,
+    },
   });
 
   cyrg2025Sequelize = sequelize; // SQLite模式下使用同一个连接
@@ -48,18 +48,18 @@ if (useSQLite) {
     logging: process.env.LOG_LEVEL === 'debug' ? console.log : false,
     dialectOptions: {
       encrypt: false,
-      trustServerCertificate: true
+      trustServerCertificate: true,
     },
     timezone: '+08:00',
     pool: {
       max: 5,
       min: 0,
       acquire: 30000,
-      idle: 10000
+      idle: 10000,
     },
     retry: {
-      max: 3
-    }
+      max: 3,
+    },
   };
 
   const cyrg2025DbConfig = {
@@ -72,36 +72,31 @@ if (useSQLite) {
     logging: process.env.LOG_LEVEL === 'debug' ? console.log : false,
     dialectOptions: {
       encrypt: false,
-      trustServerCertificate: true
+      trustServerCertificate: true,
     },
     timezone: '+08:00',
     pool: {
       max: 5,
       min: 0,
       acquire: 30000,
-      idle: 10000
+      idle: 10000,
     },
     retry: {
-      max: 3
-    }
+      max: 3,
+    },
   };
 
-  sequelize = new Sequelize(
-    dbConfig.database,
-    dbConfig.username,
-    dbConfig.password,
-    {
-      host: dbConfig.host,
-      port: dbConfig.port,
-      database: dbConfig.database,
-      dialect: dbConfig.dialect,
-      logging: dbConfig.logging,
-      dialectOptions: dbConfig.dialectOptions,
-      timezone: dbConfig.timezone,
-      pool: dbConfig.pool,
-      retry: dbConfig.retry
-    }
-  );
+  sequelize = new Sequelize(dbConfig.database, dbConfig.username, dbConfig.password, {
+    host: dbConfig.host,
+    port: dbConfig.port,
+    database: dbConfig.database,
+    dialect: dbConfig.dialect,
+    logging: dbConfig.logging,
+    dialectOptions: dbConfig.dialectOptions,
+    timezone: dbConfig.timezone,
+    pool: dbConfig.pool,
+    retry: dbConfig.retry,
+  });
 
   cyrg2025Sequelize = new Sequelize(
     cyrg2025DbConfig.database,
@@ -116,7 +111,7 @@ if (useSQLite) {
       dialectOptions: cyrg2025DbConfig.dialectOptions,
       timezone: cyrg2025DbConfig.timezone,
       pool: cyrg2025DbConfig.pool,
-      retry: cyrg2025DbConfig.retry
+      retry: cyrg2025DbConfig.retry,
     }
   );
 }
@@ -134,7 +129,7 @@ export async function connectDatabase() {
       logger.info('使用MSSQL数据库模式');
       await sequelize.authenticate();
       logger.info('主数据库连接成功');
-      
+
       await cyrg2025Sequelize.authenticate();
       logger.info('货物数据库连接成功');
     }

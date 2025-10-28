@@ -50,7 +50,7 @@ export const getStores = async (): Promise<any[]> => {
 export const getCityDetails = async (city: string) => {
   try {
     console.log('开始查询城市详情:', city);
-    
+
     // 根据城市名称获取正确的城市名称
     let cityName = '沈阳市'; // 默认沈阳市
     if (city.includes('沈阳')) {
@@ -82,7 +82,7 @@ export const getCityDetails = async (city: string) => {
     } else if (city.includes('葫芦岛')) {
       cityName = '葫芦岛市';
     }
-    
+
     // 基础统计信息 - 使用正确的数据库和表名
     const basicStats = await sequelize.query(
       `SELECT
@@ -100,14 +100,14 @@ export const getCityDetails = async (city: string) => {
         AND co.total_amount > 0
         AND co.customer_id IS NOT NULL
         AND co.customer_id != ''`,
-      { 
+      {
         type: QueryTypes.SELECT,
-        replacements: { cityName: cityName }
+        replacements: { cityName: cityName },
       }
     );
-    
+
     console.log('查询结果:', basicStats);
-    
+
     if (!basicStats || basicStats.length === 0) {
       console.log('没有找到数据，返回空结果');
       return {
@@ -116,12 +116,12 @@ export const getCityDetails = async (city: string) => {
         total_sales: 0,
         avg_order_value: 0,
         topProductsBySales: [],
-        topProductsByQuantity: []
+        topProductsByQuantity: [],
       };
     }
-    
+
     const stats = basicStats[0] as any;
-    
+
     // 热门商品（按销售额）
     const topProductsBySales = await sequelize.query(
       `SELECT TOP 10
@@ -150,12 +150,12 @@ export const getCityDetails = async (city: string) => {
         AND co.customer_id != ''
       GROUP BY og.goodsName
       ORDER BY sales DESC`,
-      { 
+      {
         type: QueryTypes.SELECT,
-        replacements: { cityName: cityName }
+        replacements: { cityName: cityName },
       }
     );
-    
+
     // 热门商品（按数量）
     const topProductsByQuantity = await sequelize.query(
       `SELECT TOP 10
@@ -184,21 +184,20 @@ export const getCityDetails = async (city: string) => {
         AND co.customer_id != ''
       GROUP BY og.goodsName
       ORDER BY total_quantity DESC`,
-      { 
+      {
         type: QueryTypes.SELECT,
-        replacements: { cityName: cityName }
+        replacements: { cityName: cityName },
       }
     );
-    
+
     return formatData({
       total_customers: stats.total_customers || 0,
       total_orders: stats.total_orders || 0,
       total_sales: stats.total_sales || 0,
       avg_order_value: stats.avg_order_value || 0,
       topProductsBySales: topProductsBySales || [],
-      topProductsByQuantity: topProductsByQuantity || []
+      topProductsByQuantity: topProductsByQuantity || [],
     });
-    
   } catch (error) {
     console.error('获取城市详情失败:', error);
     return {
@@ -207,7 +206,7 @@ export const getCityDetails = async (city: string) => {
       total_sales: 0,
       avg_order_value: 0,
       topProductsBySales: [],
-      topProductsByQuantity: []
+      topProductsByQuantity: [],
     };
   }
 };
@@ -233,12 +232,12 @@ export const getCityComparison = async (cities: string[]) => {
       AND c.city_name IN (:cityNames)
     GROUP BY c.city_name
     ORDER BY total_sales DESC`,
-    { 
+    {
       type: QueryTypes.SELECT,
-      replacements: { cityNames: cities }
+      replacements: { cityNames: cities },
     }
   );
-  
+
   // 格式化返回数据
   return (rows as any[]).map(row => formatData(row));
 };
@@ -295,12 +294,12 @@ export const getShopGrowth = async (city: string) => {
       AND co.customer_id != ''
     GROUP BY CONVERT(VARCHAR(10), co.order_date, 120)
     ORDER BY date`,
-    { 
+    {
       type: QueryTypes.SELECT,
-      replacements: { cityName: cityName }
+      replacements: { cityName: cityName },
     }
   );
-  
+
   // 格式化返回数据
   return (rows as any[]).map(row => formatData(row));
 };
@@ -319,12 +318,12 @@ export const getShopComposition = async (city: string) => {
     WHERE s.city = :cityName AND s.Delflag = 0
     GROUP BY s.ShopName
     ORDER BY total_sales DESC`,
-    { 
+    {
       type: QueryTypes.SELECT,
-      replacements: { cityName: city }
+      replacements: { cityName: city },
     }
   );
-  
+
   // 格式化返回数据
   return (rows as any[]).map(row => formatData(row));
 };
@@ -338,9 +337,9 @@ export const getShopComparison = async (city: string) => {
     WHERE s.city = :cityName AND s.Delflag = 0
     GROUP BY s.ShopName
     ORDER BY total_sales DESC`,
-    { 
+    {
       type: QueryTypes.SELECT,
-      replacements: { cityName: city }
+      replacements: { cityName: city },
     }
   );
   return rows as any[];
@@ -411,11 +410,11 @@ export const getCustomerDistribution = async (city: string) => {
         END = '中价值客户' THEN 2
         ELSE 3
       END`,
-    { 
+    {
       type: QueryTypes.SELECT,
-      replacements: { cityName: city }
+      replacements: { cityName: city },
     }
   );
-  
+
   return rows as any[];
 };

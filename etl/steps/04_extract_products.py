@@ -100,7 +100,7 @@ def main():
         
         # 写入目标数据库
         logger.info("💾 开始写入hotdog2030.products...")
-        success = to_sql(df_cleaned, "dbo.products", "hotdog2030", if_exists='replace')
+        success = to_sql(df_cleaned, "dproducts", "hotdog2030", if_exists='replace')
         
         if success:
             # 验证结果

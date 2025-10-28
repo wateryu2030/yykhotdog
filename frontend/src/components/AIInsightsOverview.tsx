@@ -64,16 +64,39 @@ const AIInsightsOverview: React.FC<AIInsightsOverviewProps> = ({ onViewDetails }
     setError(null);
     
     try {
+      // 使用备用API获取数据
       const [metricsResponse, insightsResponse] = await Promise.all([
         api.get('/ai-insights/dashboard-metrics'),
         api.get('/ai-insights/insights')
       ]);
-      
-      setMetrics(metricsResponse.data.data);
-      setInsights(insightsResponse.data.data || []);
+
+      if (metricsResponse.data.success) {
+        setMetrics(metricsResponse.data.data);
+      }
+
+      if (insightsResponse.data.success) {
+        setInsights(insightsResponse.data.data || []);
+      }
     } catch (error) {
       console.error('加载AI洞察数据失败:', error);
       setError('加载AI洞察数据失败');
+      
+      // 设置默认数据
+      setMetrics({
+        total_revenue: 0,
+        total_orders: 0,
+        avg_order_value: 0,
+        unique_stores: 0
+      });
+      
+      setInsights([
+        {
+          type: 'info',
+          title: '数据加载失败',
+          description: '无法连接到AI洞察服务，请检查网络连接',
+          priority: 'medium'
+        }
+      ]);
     } finally {
       setLoading(false);
     }

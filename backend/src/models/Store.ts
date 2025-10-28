@@ -6,14 +6,14 @@ export enum StoreStatus {
   PLANNING = 'planning',
   CONSTRUCTION = 'construction',
   OPERATING = 'operating',
-  CLOSED = 'closed'
+  CLOSED = 'closed',
 }
 
 // 门店类型枚举
 export enum StoreType {
   DIRECT = 'direct',
   FRANCHISE = 'franchise',
-  PARTNER = 'partner'
+  PARTNER = 'partner',
 }
 
 // 门店属性接口
@@ -40,10 +40,14 @@ export interface StoreAttributes {
 }
 
 // 创建门店时的可选属性
-export interface StoreCreationAttributes extends Optional<StoreAttributes, 'id' | 'created_at' | 'updated_at'> {}
+export interface StoreCreationAttributes
+  extends Optional<StoreAttributes, 'id' | 'created_at' | 'updated_at'> {}
 
 // 门店模型类
-export class Store extends Model<StoreAttributes, StoreCreationAttributes> implements StoreAttributes {
+export class Store
+  extends Model<StoreAttributes, StoreCreationAttributes>
+  implements StoreAttributes
+{
   public id!: number;
   public store_code!: string;
   public store_name!: string;
@@ -167,4 +171,4 @@ Store.init(
   }
 );
 
-export default Store; 
+export default Store;

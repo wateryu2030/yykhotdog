@@ -1,8 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { sequelize } from '../config/database';
 import { QueryTypes } from 'sequelize';
+import AdvancedCustomerAnalysisService from '../services/AdvancedCustomerAnalysisService';
+import { logger } from '../utils/logger';
 
 const router = Router();
+const aiAnalysisService = new AdvancedCustomerAnalysisService();
 
 // 获取客户画像仪表板摘要
 router.get('/dashboard-summary', async (req: Request, res: Response) => {
@@ -19,7 +22,7 @@ router.get('/dashboard-summary', async (req: Request, res: Response) => {
     `;
     
     const storeStats = await sequelize.query(storeStatsQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
     
     // 获取销售统计
@@ -32,7 +35,7 @@ router.get('/dashboard-summary', async (req: Request, res: Response) => {
     `;
     
     const salesStats = await sequelize.query(salesStatsQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
     
     // 获取客户统计
@@ -46,7 +49,7 @@ router.get('/dashboard-summary', async (req: Request, res: Response) => {
     `;
     
     const customerStats = await sequelize.query(customerStatsQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
     
     // 获取城市统计
@@ -61,7 +64,7 @@ router.get('/dashboard-summary', async (req: Request, res: Response) => {
     `;
     
     const cityStats = await sequelize.query(cityStatsQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
     
     const storeData = storeStats[0] as any;
@@ -83,25 +86,26 @@ router.get('/dashboard-summary', async (req: Request, res: Response) => {
       totalCustomers: customerData?.total_customers || 0,
       activeCustomers: customerData?.active_customers || 0,
       newCustomers: customerData?.new_customers || 0,
-      avgOrderValue: salesData?.total_orders > 0 ? (salesData?.total_sales / salesData?.total_orders) : 0,
+      avgOrderValue:
+        salesData?.total_orders > 0 ? salesData?.total_sales / salesData?.total_orders : 0,
       
       // 城市数据
       topCities: cityStats.map((city: any) => ({
         name: city.city,
-        count: city.count
-      }))
+        count: city.count,
+      })),
     };
 
     res.json({
       success: true,
-      data: summary
+      data: summary,
     });
   } catch (error) {
     console.error('获取客户画像摘要失败:', error);
     res.status(500).json({
       success: false,
       error: '获取客户画像摘要失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -111,8 +115,8 @@ router.get('/dashboard', async (req: Request, res: Response) => {
   try {
     const { city, shopId, startDate, endDate } = req.query;
     
-    // 构建基础查询条件
-    let whereClause = 'WHERE o.delflag = 0';
+    // 构建基础查询条件 - 过滤空客户ID
+    let whereClause = 'WHERE o.delflag = 0 AND o.customer_id IS NOT NULL AND o.customer_id != \'\'';
     const params: any = {};
     
     if (city) {
@@ -140,7 +144,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
     
     const storeStats = await sequelize.query(storeStatsQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
     
     // 获取销售统计
@@ -156,7 +160,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
     
     const salesStats = await sequelize.query(salesStatsQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
     
     // 获取客户统计
@@ -172,7 +176,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
     
     const customerStats = await sequelize.query(customerStatsQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
     
     const storeData = storeStats[0] as any;
@@ -232,7 +236,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
 
     const segments = await sequelize.query(segmentsQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
 
     // 获取时间分布数据 - 基于真实客户ID识别独立客户
@@ -250,7 +254,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
 
     const timeDistribution = await sequelize.query(timeDistributionQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
 
     // 补全24小时数据
@@ -259,7 +263,7 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       return {
         hour: i.toString().padStart(2, '0'),
         customer_count: (hourData as any)?.customer_count || 0,
-        order_count: (hourData as any)?.order_count || 0
+        order_count: (hourData as any)?.order_count || 0,
       };
     });
 
@@ -274,19 +278,19 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       segments: segments || [],
       timeDistribution: fullTimeDistribution,
       productPreferences: [],
-      aiSuggestions: []
+      aiSuggestions: [],
     };
 
     res.json({
       success: true,
-      data: summary
+      data: summary,
     });
   } catch (error) {
     console.error('获取客户画像仪表板失败:', error);
     res.status(500).json({
       success: false,
       error: '获取客户画像仪表板失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -369,19 +373,19 @@ router.get('/cities', async (req: Request, res: Response) => {
     `;
 
     const cities = await sequelize.query(query, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     res.json({
       success: true,
-      data: cities
+      data: cities,
     });
   } catch (error) {
     console.error('获取城市列表失败:', error);
     res.status(500).json({
       success: false,
       error: '获取城市列表失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -405,19 +409,19 @@ router.get('/stores', async (req: Request, res: Response) => {
     `;
 
     const stores = await sequelize.query(query, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     res.json({
       success: true,
-      data: stores
+      data: stores,
     });
   } catch (error) {
     console.error('获取所有门店列表失败:', error);
     res.status(500).json({
       success: false,
       error: '获取所有门店列表失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -444,19 +448,19 @@ router.get('/stores/by-city-name/:cityName', async (req: Request, res: Response)
 
     const stores = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: { cityName: decodeURIComponent(cityName) }
+      replacements: { cityName: decodeURIComponent(cityName) },
     });
 
     res.json({
       success: true,
-      data: stores
+      data: stores,
     });
   } catch (error) {
     console.error('获取门店列表失败:', error);
     res.status(500).json({
       success: false,
       error: '获取门店列表失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -474,19 +478,19 @@ router.get('/debug-stores', async (req: Request, res: Response) => {
     `;
     
     const result = await sequelize.query(query, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
     
     res.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
     console.error('调试门店状态失败:', error);
     res.status(500).json({
       success: false,
       error: '调试门店状态失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -503,11 +507,11 @@ router.get('/customers', async (req: Request, res: Response) => {
       page = 1, 
       pageSize = 10, 
       sortField = 'total_spent', 
-      sortOrder = 'desc' 
+      sortOrder = 'desc',
     } = req.query;
     
-    // 构建基础查询条件
-    let whereClause = 'WHERE o.delflag = 0';
+    // 构建基础查询条件 - 过滤空客户ID
+    let whereClause = 'WHERE o.delflag = 0 AND o.customer_id IS NOT NULL AND o.customer_id != \'\'';
     const params: any = {};
     
     if (city) {
@@ -588,7 +592,7 @@ router.get('/customers', async (req: Request, res: Response) => {
     
     const customers = await sequelize.query(customerQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
     
     // 获取总数 - 基于真实客户ID
@@ -621,7 +625,7 @@ router.get('/customers', async (req: Request, res: Response) => {
     
     const countResult = await sequelize.query(countQuery, {
       type: QueryTypes.SELECT,
-      replacements: segment ? { ...params, segment } : params
+      replacements: segment ? { ...params, segment } : params,
     });
     
     const total = (countResult[0] as any)?.total || 0;
@@ -629,14 +633,14 @@ router.get('/customers', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: customers,
-      total: total
+      total: total,
     });
   } catch (error) {
     console.error('获取客户列表失败:', error);
     res.status(500).json({
       success: false,
       error: '获取客户列表失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -646,8 +650,8 @@ router.get('/ai-analysis', async (req: Request, res: Response) => {
   try {
     const { city, shopId, startDate, endDate } = req.query;
 
-    // 构建基础查询条件
-    let whereClause = 'WHERE o.delflag = 0';
+    // 构建基础查询条件 - 过滤空客户ID
+    let whereClause = 'WHERE o.delflag = 0 AND o.customer_id IS NOT NULL AND o.customer_id != \'\'';
     const params: any = {};
 
     if (city) {
@@ -717,7 +721,7 @@ router.get('/ai-analysis', async (req: Request, res: Response) => {
 
     const segments = await sequelize.query(segmentsQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
 
     // 获取时间分布数据
@@ -735,7 +739,7 @@ router.get('/ai-analysis', async (req: Request, res: Response) => {
 
     const timeDistribution = await sequelize.query(timeDistributionQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
 
     // 获取产品偏好数据
@@ -756,7 +760,7 @@ router.get('/ai-analysis', async (req: Request, res: Response) => {
 
     const productPreferences = await sequelize.query(productPreferencesQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
 
     // AI分析逻辑
@@ -768,15 +772,15 @@ router.get('/ai-analysis', async (req: Request, res: Response) => {
         segments,
         timeDistribution,
         productPreferences,
-        aiAnalysis: analysis
-      }
+        aiAnalysis: analysis,
+      },
     });
   } catch (error) {
     console.error('AI客户分析失败:', error);
     res.status(500).json({
       success: false,
       error: 'AI客户分析失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -786,11 +790,17 @@ function generateAIAnalysis(segments: any[], timeDistribution: any[], productPre
   const totalCustomers = segments.reduce((sum, seg) => sum + seg.customer_count, 0);
   const coreCustomers = segments.find(s => s.segment_name === '核心客户')?.customer_count || 0;
   const activeCustomers = segments.find(s => s.segment_name === '活跃客户')?.customer_count || 0;
-  const opportunityCustomers = segments.find(s => s.segment_name === '机会客户')?.customer_count || 0;
-  const dormantCustomers = segments.find(s => s.segment_name === '沉睡/新客户')?.customer_count || 0;
+  const opportunityCustomers =
+    segments.find(s => s.segment_name === '机会客户')?.customer_count || 0;
+  const dormantCustomers =
+    segments.find(s => s.segment_name === '沉睡/新客户')?.customer_count || 0;
 
   // 计算客户健康度
-  const healthScore = Math.round(((coreCustomers * 4 + activeCustomers * 3 + opportunityCustomers * 2 + dormantCustomers * 1) / (totalCustomers * 4)) * 100);
+  const healthScore = Math.round(
+    ((coreCustomers * 4 + activeCustomers * 3 + opportunityCustomers * 2 + dormantCustomers * 1) /
+      (totalCustomers * 4)) *
+      100
+  );
 
   // 分析高峰时段
   const peakHours = timeDistribution
@@ -811,7 +821,7 @@ function generateAIAnalysis(segments: any[], timeDistribution: any[], productPre
       priority: '高',
       title: '核心客户比例偏低',
       description: `当前核心客户仅占${((coreCustomers / totalCustomers) * 100).toFixed(1)}%，建议通过会员权益和个性化服务提升客户粘性`,
-      action: '推出VIP会员计划，提供专属优惠和优先服务'
+      action: '推出VIP会员计划，提供专属优惠和优先服务',
     });
   }
 
@@ -821,7 +831,7 @@ function generateAIAnalysis(segments: any[], timeDistribution: any[], productPre
       priority: '高',
       title: '沉睡客户过多',
       description: `沉睡/新客户占比${((dormantCustomers / totalCustomers) * 100).toFixed(1)}%，需要激活策略`,
-      action: '发送个性化优惠券，推出限时促销活动'
+      action: '发送个性化优惠券，推出限时促销活动',
     });
   }
 
@@ -832,7 +842,7 @@ function generateAIAnalysis(segments: any[], timeDistribution: any[], productPre
       priority: '中',
       title: '高峰时段分析',
       description: `客户活跃高峰时段：${peakHours.join('点、')}点`,
-      action: '在高峰时段增加人手，优化服务流程'
+      action: '在高峰时段增加人手，优化服务流程',
     });
   }
 
@@ -843,19 +853,21 @@ function generateAIAnalysis(segments: any[], timeDistribution: any[], productPre
       priority: '中',
       title: '热门产品分析',
       description: `最受欢迎的产品：${topProducts.map(p => p.product_name).join('、')}`,
-      action: '增加热门产品库存，开发相关衍生产品'
+      action: '增加热门产品库存，开发相关衍生产品',
     });
   }
 
   // 客户生命周期价值建议
-  const avgLifetimeValue = segments.reduce((sum, seg) => sum + (seg.lifetime_value_3y * seg.customer_count), 0) / totalCustomers;
+  const avgLifetimeValue =
+    segments.reduce((sum, seg) => sum + seg.lifetime_value_3y * seg.customer_count, 0) /
+    totalCustomers;
   if (avgLifetimeValue < 100) {
     suggestions.push({
       type: '价值提升',
       priority: '高',
       title: '客户生命周期价值偏低',
       description: `平均客户生命周期价值仅${avgLifetimeValue.toFixed(2)}元`,
-      action: '推出套餐优惠，鼓励客户增加购买频次和金额'
+      action: '推出套餐优惠，鼓励客户增加购买频次和金额',
     });
   }
 
@@ -866,21 +878,391 @@ function generateAIAnalysis(segments: any[], timeDistribution: any[], productPre
       core: coreCustomers,
       active: activeCustomers,
       opportunity: opportunityCustomers,
-      dormant: dormantCustomers
+      dormant: dormantCustomers,
     },
     peakHours,
     topProducts: topProducts.map(p => ({
       name: p.product_name,
       revenue: p.total_revenue,
-      orders: p.order_count
+      orders: p.order_count,
     })),
     suggestions,
     summary: {
       strengths: healthScore > 70 ? ['客户基础稳定', '产品受欢迎度高'] : ['需要客户激活'],
       improvements: healthScore < 70 ? ['提升客户粘性', '增加客户价值'] : ['维持现有优势'],
-      nextSteps: suggestions.slice(0, 3).map(s => s.action)
-    }
+      nextSteps: suggestions.slice(0, 3).map(s => s.action),
+    },
   };
 }
+
+// ==================== 新增AI分析API端点 ====================
+
+// AI深度客户洞察分析
+router.post('/ai-insights', async (req: Request, res: Response) => {
+  try {
+    const { city, shopId, startDate, endDate } = req.body;
+
+    // 构建基础查询条件
+    let whereClause = 'WHERE o.delflag = 0';
+    const params: any = {};
+
+    if (city) {
+      whereClause += ' AND s.city = :city';
+      params.city = city;
+    }
+    if (shopId) {
+      whereClause += ' AND o.store_id = :shopId';
+      params.shopId = shopId;
+    }
+    if (startDate && endDate) {
+      whereClause += ' AND o.created_at BETWEEN :startDate AND :endDate';
+      params.startDate = startDate;
+      params.endDate = endDate;
+    }
+
+    // 获取客户分层数据
+    const segmentsQuery = `
+      WITH customer_stats AS (
+        SELECT 
+          o.customer_id,
+          COUNT(*) as order_count,
+          SUM(o.total_amount) as total_spent,
+          AVG(o.total_amount) as avg_order_value,
+          MIN(o.created_at) as first_order_date,
+          MAX(o.created_at) as last_order_date,
+          DATEDIFF(day, MIN(o.created_at), MAX(o.created_at)) as customer_lifespan_days
+        FROM orders o
+        LEFT JOIN stores s ON o.store_id = s.id
+        ${whereClause}
+        GROUP BY o.customer_id
+      ),
+      customer_segments AS (
+        SELECT 
+          customer_id,
+          order_count,
+          total_spent,
+          avg_order_value,
+          first_order_date,
+          last_order_date,
+          customer_lifespan_days,
+          CASE 
+            WHEN total_spent >= 1000 AND order_count >= 10 THEN N'核心客户'
+            WHEN total_spent >= 500 AND order_count >= 5 THEN N'活跃客户'
+            WHEN total_spent >= 100 AND order_count >= 2 THEN N'机会客户'
+            ELSE N'沉睡/新客户'
+          END as segment_name
+        FROM customer_stats
+      )
+      SELECT 
+        segment_name,
+        COUNT(*) as customer_count,
+        AVG(avg_order_value) as avg_spend,
+        AVG(CAST(order_count AS FLOAT)) as avg_orders,
+        SUM(total_spent) as total_revenue,
+        AVG(total_spent * 3) as lifetime_value_3y
+      FROM customer_segments
+      GROUP BY segment_name
+      ORDER BY 
+        CASE segment_name
+          WHEN N'核心客户' THEN 1
+          WHEN N'活跃客户' THEN 2
+          WHEN N'机会客户' THEN 3
+          WHEN N'沉睡/新客户' THEN 4
+        END
+    `;
+
+    const segments = await sequelize.query(segmentsQuery, {
+      type: QueryTypes.SELECT,
+      replacements: params,
+    });
+
+    // 获取时间分布数据
+    const timeDistributionQuery = `
+      SELECT 
+        DATEPART(hour, o.created_at) as hour,
+        COUNT(DISTINCT o.customer_id) as customer_count,
+        COUNT(*) as order_count
+      FROM orders o
+      LEFT JOIN stores s ON o.store_id = s.id
+      ${whereClause}
+      GROUP BY DATEPART(hour, o.created_at)
+      ORDER BY hour
+    `;
+
+    const timeDistribution = await sequelize.query(timeDistributionQuery, {
+      type: QueryTypes.SELECT,
+      replacements: params,
+    });
+
+    // 补全24小时数据
+    const fullTimeDistribution = Array.from({ length: 24 }, (_, i) => {
+      const hourData = timeDistribution.find((item: any) => item.hour === i) as any;
+      return {
+        hour: i.toString().padStart(2, '0'),
+        customer_count: hourData?.customer_count || 0,
+        order_count: hourData?.order_count || 0,
+      };
+    });
+
+    // 获取产品偏好数据
+    const productPreferencesQuery = `
+      SELECT TOP 5
+        oi.product_name,
+        SUM(oi.quantity) as total_quantity,
+        SUM(oi.total_price) as total_revenue,
+        COUNT(DISTINCT o.customer_id) as customer_count
+      FROM order_items oi
+      LEFT JOIN orders o ON oi.order_id = o.id
+      LEFT JOIN stores s ON o.store_id = s.id
+      ${whereClause}
+      GROUP BY oi.product_name
+      ORDER BY total_revenue DESC
+    `;
+
+    const productPreferences = await sequelize.query(productPreferencesQuery, {
+      type: QueryTypes.SELECT,
+      replacements: params,
+    });
+
+    // 构建AI分析数据
+    const customerData = {
+      segments: segments as any[],
+      behavior: {
+        timeDistribution: fullTimeDistribution,
+        productPreferences: productPreferences as any[]
+      },
+      timeDistribution: fullTimeDistribution
+    };
+
+    // 调用AI分析服务
+    const aiInsights = await aiAnalysisService.generateCustomerInsights(customerData);
+
+    res.json({
+      success: true,
+      data: {
+        insights: aiInsights,
+        rawData: customerData,
+        generatedAt: new Date().toISOString()
+      },
+      message: 'AI客户洞察生成成功'
+    });
+
+  } catch (error) {
+    logger.error('AI客户洞察分析失败:', error);
+    res.status(500).json({
+      success: false,
+      message: 'AI客户洞察分析失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+// 客户生命周期预测
+router.get('/customer-lifecycle/:customerId', async (req: Request, res: Response) => {
+  try {
+    const { customerId } = req.params;
+
+    // 获取客户详细数据
+    const customerQuery = `
+      SELECT 
+        o.customer_id,
+        COUNT(*) as order_count,
+        SUM(o.total_amount) as total_spent,
+        AVG(o.total_amount) as avg_order_value,
+        MIN(o.created_at) as first_order_date,
+        MAX(o.created_at) as last_order_date,
+        DATEDIFF(day, MIN(o.created_at), MAX(o.created_at)) as customer_lifespan_days
+      FROM orders o
+      WHERE o.customer_id = :customerId AND o.delflag = 0
+      GROUP BY o.customer_id
+    `;
+
+    const customerData = await sequelize.query(customerQuery, {
+      type: QueryTypes.SELECT,
+      replacements: { customerId }
+    });
+
+    if (customerData.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: '客户不存在'
+      });
+    }
+
+    // 预测客户生命周期
+    const lifecyclePrediction = await aiAnalysisService.predictCustomerLifecycle(
+      customerId, 
+      customerData[0] as any
+    );
+
+    res.json({
+      success: true,
+      data: {
+        customerId,
+        currentData: customerData[0],
+        prediction: lifecyclePrediction,
+        predictedAt: new Date().toISOString()
+      },
+      message: '客户生命周期预测成功'
+    });
+
+  } catch (error) {
+    logger.error('客户生命周期预测失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '客户生命周期预测失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+// 动态调整分群阈值
+router.post('/adjust-segmentation-thresholds', async (req: Request, res: Response) => {
+  try {
+    const { city, shopId, startDate, endDate } = req.body;
+
+    // 构建查询条件
+    let whereClause = 'WHERE o.delflag = 0';
+    const params: any = {};
+
+    if (city) {
+      whereClause += ' AND s.city = :city';
+      params.city = city;
+    }
+    if (shopId) {
+      whereClause += ' AND o.store_id = :shopId';
+      params.shopId = shopId;
+    }
+    if (startDate && endDate) {
+      whereClause += ' AND o.created_at BETWEEN :startDate AND :endDate';
+      params.startDate = startDate;
+      params.endDate = endDate;
+    }
+
+    // 获取历史客户数据
+    const historicalDataQuery = `
+      SELECT 
+        o.customer_id,
+        COUNT(*) as order_count,
+        SUM(o.total_amount) as total_spent,
+        AVG(o.total_amount) as avg_order_value
+      FROM orders o
+      LEFT JOIN stores s ON o.store_id = s.id
+      ${whereClause}
+      GROUP BY o.customer_id
+    `;
+
+    const historicalData = await sequelize.query(historicalDataQuery, {
+      type: QueryTypes.SELECT,
+      replacements: params,
+    });
+
+    // 调整分群阈值
+    const adjustedThresholds = await aiAnalysisService.adjustSegmentationThresholds(
+      historicalData as any[]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        thresholds: adjustedThresholds,
+        sampleSize: historicalData.length,
+        adjustedAt: new Date().toISOString()
+      },
+      message: '分群阈值调整成功'
+    });
+
+  } catch (error) {
+    logger.error('分群阈值调整失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '分群阈值调整失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
+
+// 客户流失预警
+router.get('/churn-alert', async (req: Request, res: Response) => {
+  try {
+    const { city, shopId, days = 30 } = req.query;
+
+    // 构建查询条件
+    let whereClause = 'WHERE o.delflag = 0';
+    const params: any = { days };
+
+    if (city) {
+      whereClause += ' AND s.city = :city';
+      params.city = city;
+    }
+    if (shopId) {
+      whereClause += ' AND o.store_id = :shopId';
+      params.shopId = shopId;
+    }
+
+    // 获取潜在流失客户
+    const churnAlertQuery = `
+      WITH customer_last_order AS (
+        SELECT 
+          o.customer_id,
+          MAX(o.created_at) as last_order_date,
+          COUNT(*) as total_orders,
+          SUM(o.total_amount) as total_spent,
+          AVG(o.total_amount) as avg_order_value
+        FROM orders o
+        LEFT JOIN stores s ON o.store_id = s.id
+        ${whereClause}
+        GROUP BY o.customer_id
+      )
+      SELECT 
+        customer_id,
+        last_order_date,
+        total_orders,
+        total_spent,
+        avg_order_value,
+        DATEDIFF(day, last_order_date, GETDATE()) as days_since_last_order,
+        CASE 
+          WHEN DATEDIFF(day, last_order_date, GETDATE()) > CAST(:days AS INT) THEN N'高风险'
+          WHEN DATEDIFF(day, last_order_date, GETDATE()) > CAST(:days AS INT)/2 THEN N'中风险'
+          ELSE N'低风险'
+        END as churn_risk_level
+      FROM customer_last_order
+      WHERE DATEDIFF(day, last_order_date, GETDATE()) > CAST(:days AS INT)/2
+      ORDER BY days_since_last_order DESC, total_spent DESC
+    `;
+
+    const churnAlerts = await sequelize.query(churnAlertQuery, {
+      type: QueryTypes.SELECT,
+      replacements: params,
+    });
+
+    // 统计风险分布
+    const riskStats = {
+      high: churnAlerts.filter((c: any) => c.churn_risk_level === '高风险').length,
+      medium: churnAlerts.filter((c: any) => c.churn_risk_level === '中风险').length,
+      low: churnAlerts.filter((c: any) => c.churn_risk_level === '低风险').length,
+      total: churnAlerts.length
+    };
+
+    res.json({
+      success: true,
+      data: {
+        alerts: churnAlerts,
+        riskStats,
+        alertThreshold: days,
+        generatedAt: new Date().toISOString()
+      },
+      message: '客户流失预警生成成功'
+    });
+
+  } catch (error) {
+    logger.error('客户流失预警失败:', error);
+    res.status(500).json({
+      success: false,
+      message: '客户流失预警失败',
+      error: error instanceof Error ? error.message : '未知错误'
+    });
+  }
+});
 
 export default router;

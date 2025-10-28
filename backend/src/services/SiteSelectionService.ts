@@ -5,7 +5,7 @@ export class SiteSelectionService {
     return {
       region,
       analysis: '选址分析结果',
-      score: 85
+      score: 85,
     };
   }
 }

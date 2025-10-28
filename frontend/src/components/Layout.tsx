@@ -14,7 +14,8 @@ import {
   TeamOutlined,
   ShoppingOutlined,
   DatabaseOutlined,
-  RobotOutlined
+  RobotOutlined,
+  MonitorOutlined
 } from '@ant-design/icons';
 
   const { Sider, Content } = AntLayout;
@@ -94,6 +95,21 @@ const Layout: React.FC = () => {
       key: '/ai-assistant',
       icon: <RobotOutlined />,
       label: 'AI开发助手',
+    },
+    {
+      key: '/ai-integration-test',
+      icon: <RobotOutlined />,
+      label: 'AI集成测试',
+    },
+    {
+      key: '/intelligent-recommendations',
+      icon: <RobotOutlined />,
+      label: '智能推荐系统',
+    },
+    {
+      key: '/system-management',
+      icon: <MonitorOutlined />,
+      label: '系统管理',
     },
   ];
 

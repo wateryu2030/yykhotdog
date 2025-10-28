@@ -98,7 +98,7 @@ def main():
         
         # 写入数据库
         logger.info("💾 开始写入选址评分结果...")
-        success = to_sql(out, "dbo.fact_site_score", DW, if_exists='append')
+        success = to_sql(out, "dfact_site_score", DW, if_exists='append')
         
         if success:
             # 验证结果

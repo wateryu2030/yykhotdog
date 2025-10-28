@@ -1,6 +1,6 @@
 -- cyrg2025 数据库结构
--- 导出时间: 2025-10-20 15:41:02
--- 表数量: 99
+-- 导出时间: 2025-10-27T23:32:18.802Z
+-- 表数量: 100
 
 -- 表: AccountStatement
 CREATE TABLE [AccountStatement] (
@@ -1038,6 +1038,23 @@ CREATE TABLE [Notice] (
     [sort] int,
     [content] varchar(1000),
     PRIMARY KEY ([id])
+);
+
+-- 表: OperationLog
+CREATE TABLE [OperationLog] (
+    [ID] bigint NOT NULL,
+    [Content] varchar(MAX),
+    [RecordID] int,
+    [RecordTime] datetime DEFAULT (getdate()),
+    [TableName] varchar(50),
+    [Delflag] bit DEFAULT ((0)),
+    [ChangeType] varchar(50),
+    [Remarks] varchar(550),
+    [Name] varchar(50),
+    [Tel] varchar(50),
+    [Type] int,
+    [ShopId] int,
+    PRIMARY KEY ([ID])
 );
 
 -- 表: OrderGoods

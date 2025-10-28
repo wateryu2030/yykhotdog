@@ -16,10 +16,12 @@ import {
   PlusOutlined,
   CheckCircleOutlined,
   ExclamationCircleOutlined,
-  RobotOutlined
+  RobotOutlined,
+  DashboardOutlined
 } from '@ant-design/icons';
 import { Line, Bar } from '@ant-design/plots';
 import { useNavigate } from 'react-router-dom';
+import AIDashboard from '../components/AIDashboard';
 // import CityDetailModal from '../components/CityDetailModal';
 // import HealthCheck from '../components/HealthCheck';
 
@@ -476,8 +478,21 @@ const Dashboard: React.FC = () => {
 
   return (
     <div style={{ padding: '24px', background: '#f0f2f5', minHeight: '100vh' }}>
-
-      {/* 顶部信息栏 */}
+      {/* AI智能仪表盘标签页 */}
+      <Tabs
+        defaultActiveKey="traditional"
+        items={[
+          {
+            key: 'traditional',
+            label: (
+              <span>
+                <DashboardOutlined />
+                传统仪表盘
+              </span>
+            ),
+            children: (
+              <div>
+                {/* 顶部信息栏 */}
       <div style={{ 
         display: 'flex', 
         justifyContent: 'space-between', 
@@ -1886,6 +1901,21 @@ const Dashboard: React.FC = () => {
           }}
         />
       </Modal>
+              </div>
+            )
+          },
+          {
+            key: 'ai',
+            label: (
+              <span>
+                <RobotOutlined />
+                AI智能仪表盘
+              </span>
+            ),
+            children: <AIDashboard userId="admin" role="admin" />
+          }
+        ]}
+      />
     </div>
   );
 };

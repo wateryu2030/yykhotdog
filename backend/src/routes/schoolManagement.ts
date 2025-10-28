@@ -83,7 +83,7 @@ router.post('/create-tables', async (req: Request, res: Response) => {
     `;
 
     await sequelize.query(createTablesSQL, { type: QueryTypes.RAW });
-    
+
     // 创建索引
     const createIndexesSQL = `
       -- 创建索引
@@ -113,17 +113,17 @@ router.post('/create-tables', async (req: Request, res: Response) => {
       message: '学校相关表创建成功',
       tables: [
         'school_basic_info',
-        'school_ai_analysis', 
+        'school_ai_analysis',
         'user_selected_schools',
-        'school_region_mapping'
-      ]
+        'school_region_mapping',
+      ],
     });
   } catch (error) {
     console.error('创建表失败:', error);
     res.status(500).json({
       success: false,
       error: '创建表失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -132,10 +132,10 @@ router.post('/create-tables', async (req: Request, res: Response) => {
 router.get('/schools', async (req: Request, res: Response) => {
   try {
     const { province, city, district, school_type, min_students, useAmap } = req.query;
-    
+
     let whereClause = 'WHERE s.delflag = 0';
     const params: any = {};
-    
+
     if (province) {
       whereClause += ' AND s.province = :province';
       params.province = province;
@@ -183,18 +183,18 @@ router.get('/schools', async (req: Request, res: Response) => {
 
     let schools = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
 
     // 如果本地数据库没有数据，且用户要求使用高德地图API
     if (schools.length === 0 && useAmap === 'true' && province && city && district) {
       logger.info(`本地数据库中没有${province}${city}${district}的学校数据，尝试从高德地图获取`);
-      
+
       try {
         // 从高德地图获取学校数据
         const amapSchools = await amapService.searchSchools(
-          province as string, 
-          city as string, 
+          province as string,
+          city as string,
           district as string
         );
 
@@ -202,7 +202,7 @@ router.get('/schools', async (req: Request, res: Response) => {
           // 保存到数据库
           for (const school of amapSchools) {
             const details = await amapService.getSchoolDetails(school.school_name, school.address);
-            
+
             const insertQuery = `
               INSERT INTO school_basic_info (
                 school_name, school_type, province, city, district, address,
@@ -231,15 +231,15 @@ router.get('/schools', async (req: Request, res: Response) => {
                 established_year: details.established_year,
                 school_level: details.school_level,
                 contact_phone: school.contact_phone,
-                description: school.description
-              }
+                description: school.description,
+              },
             });
           }
 
           // 重新查询数据库获取保存的数据
           schools = await sequelize.query(query, {
             type: QueryTypes.SELECT,
-            replacements: params
+            replacements: params,
           });
 
           logger.info(`成功从高德地图获取并保存了${schools.length}所学校的数据`);
@@ -252,7 +252,7 @@ router.get('/schools', async (req: Request, res: Response) => {
         return res.status(500).json({
           success: false,
           error: '从高德地图获取学校数据失败',
-          details: amapError instanceof Error ? amapError.message : '未知错误'
+          details: amapError instanceof Error ? amapError.message : '未知错误',
         });
       }
     }
@@ -260,14 +260,14 @@ router.get('/schools', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: schools,
-      total: schools.length
+      total: schools.length,
     });
   } catch (error) {
     logger.error('获取学校列表失败:', error);
     res.status(500).json({
       success: false,
       error: '获取学校列表失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -290,7 +290,7 @@ router.post('/schools', async (req: Request, res: Response) => {
       school_level,
       contact_phone,
       website,
-      description
+      description,
     } = req.body;
 
     const insertQuery = `
@@ -322,20 +322,20 @@ router.post('/schools', async (req: Request, res: Response) => {
         school_level,
         contact_phone,
         website,
-        description
-      }
+        description,
+      },
     });
 
     res.json({
       success: true,
-      message: '学校添加成功'
+      message: '学校添加成功',
     });
   } catch (error) {
     console.error('添加学校失败:', error);
     res.status(500).json({
       success: false,
       error: '添加学校失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -348,46 +348,46 @@ router.post('/selected-schools', async (req: Request, res: Response) => {
     if (!user_id || !school_ids || !Array.isArray(school_ids)) {
       return res.status(400).json({
         success: false,
-        error: '参数错误：user_id和school_ids是必需的'
+        error: '参数错误：user_id和school_ids是必需的',
       });
     }
 
     // 先删除用户之前的选择
-    await sequelize.query(
-      'UPDATE user_selected_schools SET delflag = 1 WHERE user_id = :user_id',
-      {
-        type: QueryTypes.UPDATE,
-        replacements: { user_id }
-      }
-    );
+    await sequelize.query('UPDATE user_selected_schools SET delflag = 1 WHERE user_id = :user_id', {
+      type: QueryTypes.UPDATE,
+      replacements: { user_id },
+    });
 
     // 插入新的选择
     for (const school_id of school_ids) {
-      await sequelize.query(`
+      await sequelize.query(
+        `
         INSERT INTO user_selected_schools (user_id, school_id, selection_reason, priority_level)
         VALUES (:user_id, :school_id, :selection_reason, :priority_level)
-      `, {
-        type: QueryTypes.INSERT,
-        replacements: {
-          user_id,
-          school_id,
-          selection_reason: selection_reason || '',
-          priority_level: priority_level || 1
+      `,
+        {
+          type: QueryTypes.INSERT,
+          replacements: {
+            user_id,
+            school_id,
+            selection_reason: selection_reason || '',
+            priority_level: priority_level || 1,
+          },
         }
-      });
+      );
     }
 
     res.json({
       success: true,
       message: '学校选择保存成功',
-      selected_count: school_ids.length
+      selected_count: school_ids.length,
     });
   } catch (error) {
     console.error('保存学校选择失败:', error);
     res.status(500).json({
       success: false,
       error: '保存学校选择失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -424,20 +424,20 @@ router.get('/selected-schools/:user_id', async (req: Request, res: Response) => 
 
     const selectedSchools = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: { user_id }
+      replacements: { user_id },
     });
 
     res.json({
       success: true,
       data: selectedSchools,
-      total: selectedSchools.length
+      total: selectedSchools.length,
     });
   } catch (error) {
     console.error('获取用户选择的学校失败:', error);
     res.status(500).json({
       success: false,
       error: '获取用户选择的学校失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });

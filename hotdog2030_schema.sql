@@ -1,5 +1,5 @@
 -- hotdog2030 数据库结构
--- 导出时间: 2025-10-20 15:42:16
+-- 导出时间: 2025-10-27T23:33:00.280Z
 -- 表数量: 16
 
 -- 表: city
@@ -127,8 +127,6 @@ CREATE TABLE [opening_task] (
     [created_at] datetime2 DEFAULT (sysutcdatetime()),
     PRIMARY KEY ([id])
 );
-
-ALTER TABLE [opening_task] ADD CONSTRAINT FK_opening_task_pipeline_id FOREIGN KEY ([pipeline_id]) REFERENCES [opening_pipeline]([id]);
 
 -- 表: operating_expense_import
 CREATE TABLE [operating_expense_import] (

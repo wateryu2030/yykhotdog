@@ -28,9 +28,9 @@ export default class EnhancedCustomerProfileService {
       pool: {
         max: 10,
         min: 0,
-        idleTimeoutMillis: 30000
-      }
-    }
+        idleTimeoutMillis: 30000,
+      },
+    },
   };
 
   private hotdogConfig = {
@@ -47,9 +47,9 @@ export default class EnhancedCustomerProfileService {
       pool: {
         max: 10,
         min: 0,
-        idleTimeoutMillis: 30000
-      }
-    }
+        idleTimeoutMillis: 30000,
+      },
+    },
   };
 
   private syncTasks: Map<string, SyncProgress> = new Map();
@@ -95,9 +95,11 @@ export default class EnhancedCustomerProfileService {
    */
   private isRetryableError(error: any): boolean {
     const retryableCodes = ['ESOCKET', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED'];
-    return retryableCodes.includes(error.code) || 
-           error.message?.includes('Connection is closed') ||
-           error.message?.includes('timeout');
+    return (
+      retryableCodes.includes(error.code) ||
+      error.message?.includes('Connection is closed') ||
+      error.message?.includes('timeout')
+    );
   }
 
   /**
@@ -105,7 +107,7 @@ export default class EnhancedCustomerProfileService {
    */
   async startAsyncSync(): Promise<string> {
     const taskId = `sync_${Date.now()}`;
-    
+
     const progress: SyncProgress = {
       taskId,
       status: 'pending',
@@ -113,11 +115,11 @@ export default class EnhancedCustomerProfileService {
       currentStep: '初始化',
       totalRecords: 0,
       processedRecords: 0,
-      startTime: new Date()
+      startTime: new Date(),
     };
 
     this.syncTasks.set(taskId, progress);
-    
+
     // 异步执行同步任务
     this.executeSyncTask(taskId).catch(error => {
       logger.error(`同步任务失败: ${taskId}`, error);
@@ -150,7 +152,7 @@ export default class EnhancedCustomerProfileService {
       // 使用重试机制连接数据库
       cyrg2025Pool = await this.connectWithRetry(this.cyrg2025Config);
       hotdogPool = await this.connectWithRetry(this.hotdogConfig);
-      
+
       // 显式切换到hotdog2030数据库
       await this.executeWithRetry(() => hotdogPool!.request().query('USE hotdog2030'));
       logger.info('切换到hotdog2030数据库');
@@ -158,8 +160,8 @@ export default class EnhancedCustomerProfileService {
       // 获取总记录数
       progress.currentStep = '统计记录数';
       progress.progress = 10;
-      
-      const countResult = await this.executeWithRetry(() => 
+
+      const countResult = await this.executeWithRetry(() =>
         cyrg2025Pool!.request().query(`
           SELECT COUNT(DISTINCT o.openId) as total_customers
           FROM cyrg2025.dbo.Orders o
@@ -168,7 +170,7 @@ export default class EnhancedCustomerProfileService {
             AND o.recordTime IS NOT NULL
         `)
       );
-      
+
       progress.totalRecords = (countResult as any).recordset[0].total_customers;
       logger.info(`总客户数: ${progress.totalRecords}`);
 
@@ -191,7 +193,6 @@ export default class EnhancedCustomerProfileService {
       progress.endTime = new Date();
 
       logger.info(`同步任务完成: ${taskId}`);
-
     } catch (error) {
       logger.error(`同步任务失败: ${taskId}`, error);
       progress.status = 'failed';
@@ -221,8 +222,8 @@ export default class EnhancedCustomerProfileService {
    * 同步客户基础数据
    */
   private async syncCustomerProfiles(
-    progress: SyncProgress, 
-    cyrg2025Pool: sql.ConnectionPool, 
+    progress: SyncProgress,
+    cyrg2025Pool: sql.ConnectionPool,
     hotdogPool: sql.ConnectionPool
   ): Promise<void> {
     progress.currentStep = '同步客户基础数据';
@@ -232,7 +233,7 @@ export default class EnhancedCustomerProfileService {
     let hasMore = true;
 
     while (hasMore) {
-      const batchResult = await this.executeWithRetry(() => 
+      const batchResult = await this.executeWithRetry(() =>
         cyrg2025Pool.request().query(`
           SELECT DISTINCT
             COALESCE(o.openId, CONCAT('CUST_', MIN(o.id))) as customer_id,
@@ -266,13 +267,13 @@ export default class EnhancedCustomerProfileService {
 
       // 批量插入数据
       await this.batchInsertCustomerProfiles(hotdogPool, (batchResult as any).recordset);
-      
+
       offset += this.BATCH_SIZE;
       progress.processedRecords = Math.min(offset, progress.totalRecords);
       progress.progress = 15 + Math.floor((progress.processedRecords / progress.totalRecords) * 20);
 
       logger.info(`已处理客户数据 ${progress.processedRecords}/${progress.totalRecords} 条记录`);
-      
+
       // 避免阻塞太久，给其他请求机会
       await new Promise(resolve => setTimeout(resolve, 200));
     }
@@ -282,8 +283,8 @@ export default class EnhancedCustomerProfileService {
    * 同步客户时间分析数据
    */
   private async syncCustomerTimeAnalysis(
-    progress: SyncProgress, 
-    cyrg2025Pool: sql.ConnectionPool, 
+    progress: SyncProgress,
+    cyrg2025Pool: sql.ConnectionPool,
     hotdogPool: sql.ConnectionPool
   ): Promise<void> {
     progress.currentStep = '同步客户时间分析数据';
@@ -291,12 +292,12 @@ export default class EnhancedCustomerProfileService {
 
     try {
       // 清空现有数据
-      await this.executeWithRetry(() => 
+      await this.executeWithRetry(() =>
         hotdogPool.request().query('DELETE FROM customer_time_analysis')
       );
 
       // 插入时间分析数据
-      await this.executeWithRetry(() => 
+      await this.executeWithRetry(() =>
         hotdogPool.request().query(`
           INSERT INTO customer_time_analysis (customer_id, hour_of_day, order_count, total_amount, created_at, batch_time)
           SELECT 
@@ -326,8 +327,8 @@ export default class EnhancedCustomerProfileService {
    * 同步客户产品偏好数据
    */
   private async syncCustomerProductPreferences(
-    progress: SyncProgress, 
-    cyrg2025Pool: sql.ConnectionPool, 
+    progress: SyncProgress,
+    cyrg2025Pool: sql.ConnectionPool,
     hotdogPool: sql.ConnectionPool
   ): Promise<void> {
     progress.currentStep = '同步客户产品偏好数据';
@@ -335,12 +336,12 @@ export default class EnhancedCustomerProfileService {
 
     try {
       // 清空现有数据
-      await this.executeWithRetry(() => 
+      await this.executeWithRetry(() =>
         hotdogPool.request().query('DELETE FROM customer_product_preferences')
       );
 
       // 插入产品偏好数据（这里使用模拟数据，实际应该从订单详情表获取）
-      await this.executeWithRetry(() => 
+      await this.executeWithRetry(() =>
         hotdogPool.request().query(`
           INSERT INTO customer_product_preferences (customer_id, product_category, order_count, total_amount, preference_score, created_at, batch_time)
           SELECT 
@@ -371,7 +372,7 @@ export default class EnhancedCustomerProfileService {
    * 生成AI营销建议
    */
   private async generateAIMarketingSuggestions(
-    progress: SyncProgress, 
+    progress: SyncProgress,
     hotdogPool: sql.ConnectionPool
   ): Promise<void> {
     progress.currentStep = '生成AI营销建议';
@@ -379,12 +380,12 @@ export default class EnhancedCustomerProfileService {
 
     try {
       // 清空现有数据
-      await this.executeWithRetry(() => 
+      await this.executeWithRetry(() =>
         hotdogPool.request().query('DELETE FROM ai_marketing_suggestions')
       );
 
       // 基于客户分层生成营销建议
-      await this.executeWithRetry(() => 
+      await this.executeWithRetry(() =>
         hotdogPool.request().query(`
           INSERT INTO ai_marketing_suggestions (customer_segment, suggestion_type, suggestion_title, suggestion_content, priority, expected_effect, created_at, batch_time)
           SELECT 
@@ -438,11 +439,14 @@ export default class EnhancedCustomerProfileService {
   /**
    * 批量插入客户画像数据
    */
-  private async batchInsertCustomerProfiles(pool: sql.ConnectionPool, records: any[]): Promise<void> {
+  private async batchInsertCustomerProfiles(
+    pool: sql.ConnectionPool,
+    records: any[]
+  ): Promise<void> {
     if (records.length === 0) return;
 
     const batchTime = new Date().toISOString();
-    
+
     // 使用MERGE语句进行UPSERT操作
     for (const record of records) {
       const customerProfile = {
@@ -460,29 +464,30 @@ export default class EnhancedCustomerProfileService {
         total_spend: record.total_spend || 0,
         avg_order_amount: record.avg_order_amount || 0,
         order_frequency: this.calculateOrderFrequency(
-          record.first_order_date, 
-          record.last_order_date, 
+          record.first_order_date,
+          record.last_order_date,
           record.total_orders
         ),
         customer_lifetime_value: record.total_spend || 0,
         rfm_score: this.calculateRFMScore(
-          record.last_order_date, 
-          record.total_orders, 
+          record.last_order_date,
+          record.total_orders,
           record.total_spend
         ),
         customer_segment: this.calculateCustomerSegment(
-          record.last_order_date, 
-          record.total_orders, 
+          record.last_order_date,
+          record.total_orders,
           record.total_spend
         ),
         is_active: true,
         created_at: new Date(),
         updated_at: new Date(),
-        batch_time: batchTime
+        batch_time: batchTime,
       };
 
-      await this.executeWithRetry(() => 
-        pool.request()
+      await this.executeWithRetry(() =>
+        pool
+          .request()
           .input('customer_id', sql.VarChar, customerProfile.customer_id)
           .input('open_id', sql.VarChar, customerProfile.open_id)
           .input('vip_num', sql.VarChar, customerProfile.vip_num)
@@ -497,14 +502,17 @@ export default class EnhancedCustomerProfileService {
           .input('total_spend', sql.Decimal(10, 2), customerProfile.total_spend)
           .input('avg_order_amount', sql.Decimal(10, 2), customerProfile.avg_order_amount)
           .input('order_frequency', sql.Decimal(5, 2), customerProfile.order_frequency)
-          .input('customer_lifetime_value', sql.Decimal(10, 2), customerProfile.customer_lifetime_value)
+          .input(
+            'customer_lifetime_value',
+            sql.Decimal(10, 2),
+            customerProfile.customer_lifetime_value
+          )
           .input('rfm_score', sql.VarChar, customerProfile.rfm_score)
           .input('customer_segment', sql.VarChar, customerProfile.customer_segment)
           .input('is_active', sql.Bit, customerProfile.is_active)
           .input('created_at', sql.DateTime, customerProfile.created_at)
           .input('updated_at', sql.DateTime, customerProfile.updated_at)
-          .input('batch_time', sql.DateTime, customerProfile.batch_time)
-          .query(`
+          .input('batch_time', sql.DateTime, customerProfile.batch_time).query(`
             MERGE customer_profiles AS target
             USING (SELECT @customer_id as customer_id) AS source
             ON target.customer_id = source.customer_id
@@ -580,36 +588,42 @@ export default class EnhancedCustomerProfileService {
    */
   private calculateRFMScore(lastOrderDate: Date, frequency: number, monetary: number): string {
     const now = new Date();
-    const daysSinceLastOrder = Math.floor((now.getTime() - lastOrderDate.getTime()) / (1000 * 60 * 60 * 24));
-    
+    const daysSinceLastOrder = Math.floor(
+      (now.getTime() - lastOrderDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
     let r = 1; // Recency
     if (daysSinceLastOrder <= 30) r = 5;
     else if (daysSinceLastOrder <= 60) r = 4;
     else if (daysSinceLastOrder <= 90) r = 3;
     else if (daysSinceLastOrder <= 180) r = 2;
-    
+
     let f = 1; // Frequency
     if (frequency >= 20) f = 5;
     else if (frequency >= 10) f = 4;
     else if (frequency >= 5) f = 3;
     else if (frequency >= 2) f = 2;
-    
+
     let m = 1; // Monetary
     if (monetary >= 10000) m = 5;
     else if (monetary >= 5000) m = 4;
     else if (monetary >= 1000) m = 3;
     else if (monetary >= 500) m = 2;
-    
+
     return `${r}${f}${m}`;
   }
 
   /**
    * 计算客户分群
    */
-  private calculateCustomerSegment(lastOrderDate: Date, frequency: number, monetary: number): string {
+  private calculateCustomerSegment(
+    lastOrderDate: Date,
+    frequency: number,
+    monetary: number
+  ): string {
     const rfmScore = this.calculateRFMScore(lastOrderDate, frequency, monetary);
     const score = parseInt(rfmScore);
-    
+
     if (score >= 400) return '重要价值客户';
     if (score >= 300) return '重要发展客户';
     if (score >= 200) return '重要挽留客户';
@@ -619,12 +633,18 @@ export default class EnhancedCustomerProfileService {
   /**
    * 计算订单频率
    */
-  private calculateOrderFrequency(firstOrderDate: Date, lastOrderDate: Date, totalOrders: number): number {
+  private calculateOrderFrequency(
+    firstOrderDate: Date,
+    lastOrderDate: Date,
+    totalOrders: number
+  ): number {
     if (!firstOrderDate || !lastOrderDate || totalOrders <= 1) return 0;
-    
-    const daysDiff = Math.floor((lastOrderDate.getTime() - firstOrderDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    const daysDiff = Math.floor(
+      (lastOrderDate.getTime() - firstOrderDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
     if (daysDiff === 0) return totalOrders;
-    
+
     return Math.round((totalOrders / daysDiff) * 30 * 100) / 100; // 每月订单数
   }
 
@@ -634,4 +654,4 @@ export default class EnhancedCustomerProfileService {
   private calculateAgeGroup(gender: number): string {
     return '未知';
   }
-} 
+}

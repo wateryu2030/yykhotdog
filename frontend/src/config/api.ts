@@ -1,44 +1,44 @@
 // API配置
 export const API_CONFIG = {
   // 直接连接到后端服务
-  BASE_URL: 'http://localhost:3001',
+  BASE_URL: 'http://localhost:3001/api',
   
   // 后端API端点
   BACKEND: {
-    DASHBOARD: '/api/dashboard',
-    SITE_SELECTION: '/api/site-selection',
-    OPERATIONS: '/api/operations',
-    ALLOCATION: '/api/allocation',
+    DASHBOARD: '/dashboard',
+    SITE_SELECTION: '/site-selection',
+    OPERATIONS: '/operations',
+    ALLOCATION: '/allocation',
   },
   
   // 高德地图API端点
   AMAP: {
-    REVERSE_GEOCODE_URL: '/api/amap/reverse-geocode',
-    WEATHER_URL: '/api/amap/weather',
-    POI_SEARCH_URL: '/api/amap/poi-search',
+    REVERSE_GEOCODE_URL: '/amap/reverse-geocode',
+    WEATHER_URL: '/amap/weather',
+    POI_SEARCH_URL: '/amap/poi-search',
   },
   
   // 和风天气API端点
   QWEATHER: {
-    NOW_URL: '/api/qweather/now',
-    FORECAST_URL: '/api/qweather/forecast',
-    HOURLY_URL: '/api/qweather/hourly',
+    NOW_URL: '/qweather/now',
+    FORECAST_URL: '/qweather/forecast',
+    HOURLY_URL: '/qweather/hourly',
   },
   
   // API端点
   ENDPOINTS: {
     // 地区相关
-    REGION_CASCADE: '/api/region/cascade',
+    REGION_CASCADE: '/region/cascade',
     
     // AI相关
-    AI_SMART: '/api/ai/smart',
-    AI_ANALYZE: '/api/ai/analyze',
+    AI_SMART: '/ai/smart',
+    AI_ANALYZE: '/ai/analyze',
     
     // 地图相关
-    MAP_POI: '/api/map/poi',
+    MAP_POI: '/map/poi',
     
     // 选址分析
-    SITE_ANALYSIS: '/api/site-selection/analyze',
+    SITE_ANALYSIS: '/site-selection/analyze',
     
     // 其他API...
   }

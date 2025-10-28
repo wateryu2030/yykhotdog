@@ -69,21 +69,21 @@ def main():
         
         # 写入每日指标
         if not daily_metrics.empty:
-            success = to_sql(daily_metrics, "dbo.dashboard_daily_metrics", DW, if_exists='append')
+            success = to_sql(daily_metrics, "ddashboard_daily_metrics", DW, if_exists='append')
             if success:
                 count = get_table_count(DW, "dashboard_daily_metrics")
                 logger.info(f"✅ 每日指标写入完成: {count} 条记录")
         
         # 写入门店指标
         if not store_metrics.empty:
-            success = to_sql(store_metrics, "dbo.dashboard_store_metrics", DW, if_exists='append')
+            success = to_sql(store_metrics, "ddashboard_store_metrics", DW, if_exists='append')
             if success:
                 count = get_table_count(DW, "dashboard_store_metrics")
                 logger.info(f"✅ 门店指标写入完成: {count} 条记录")
         
         # 写入城市指标
         if not city_metrics.empty:
-            success = to_sql(city_metrics, "dbo.dashboard_city_metrics", DW, if_exists='append')
+            success = to_sql(city_metrics, "ddashboard_city_metrics", DW, if_exists='append')
             if success:
                 count = get_table_count(DW, "dashboard_city_metrics")
                 logger.info(f"✅ 城市指标写入完成: {count} 条记录")

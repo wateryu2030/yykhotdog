@@ -49,205 +49,205 @@ Shop.init(
       type: DataTypes.INTEGER,
       primaryKey: true,
       autoIncrement: false, // 不自增，和同步表结构一致
-      field: 'Id'
+      field: 'Id',
     },
     ShopName: {
       type: DataTypes.STRING(100),
       allowNull: true,
-      field: 'ShopName'
+      field: 'ShopName',
     },
     ShopAddress: {
       type: DataTypes.STRING(200),
       allowNull: true,
-      field: 'ShopAddress'
+      field: 'ShopAddress',
     },
     Director: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'Director'
+      field: 'Director',
     },
     DirectorPhone: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'DirectorPhone'
+      field: 'DirectorPhone',
     },
     FirstImg: {
       type: DataTypes.STRING(200),
       allowNull: true,
-      field: 'FirstImg'
+      field: 'FirstImg',
     },
     RecordId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      field: 'RecordId'
+      field: 'RecordId',
     },
     Delflag: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      field: 'Delflag'
+      field: 'Delflag',
     },
     RecordTime: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      field: 'RecordTime'
+      field: 'RecordTime',
     },
     location: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      field: 'location'
+      field: 'location',
     },
     state: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      field: 'state'
+      field: 'state',
     },
     isUse: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      field: 'isUse'
+      field: 'isUse',
     },
     blurb: {
       type: DataTypes.TEXT,
       allowNull: true,
-      field: 'blurb'
+      field: 'blurb',
     },
     province: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      field: 'province'
+      field: 'province',
     },
     city: {
       type: DataTypes.STRING(100),
       allowNull: true,
-      field: 'city'
+      field: 'city',
     },
     district: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      field: 'district'
+      field: 'district',
     },
     morningTime: {
       type: DataTypes.TEXT,
       allowNull: true,
-      field: 'morningTime'
+      field: 'morningTime',
     },
     nightTime: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      field: 'nightTime'
+      field: 'nightTime',
     },
     passengerFlow: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      field: 'passengerFlow'
+      field: 'passengerFlow',
     },
     interval: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      field: 'interval'
+      field: 'interval',
     },
     isClose: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      field: 'isClose'
+      field: 'isClose',
     },
     enterPriseId: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      field: 'enterPriseId'
+      field: 'enterPriseId',
     },
     merchantId: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      field: 'merchantId'
+      field: 'merchantId',
     },
     meituanId: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'meituanId'
+      field: 'meituanId',
     },
     elemeId: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'elemeId'
+      field: 'elemeId',
     },
     douyinId: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'douyinId'
+      field: 'douyinId',
     },
     establishTime: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      field: 'establishTime'
+      field: 'establishTime',
     },
     meituantuangouId: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'meituantuangouId'
+      field: 'meituantuangouId',
     },
     openingTime: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      field: 'openingTime'
+      field: 'openingTime',
     },
     isSettlement: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      field: 'isSettlement'
+      field: 'isSettlement',
     },
     settlementRate: {
       type: DataTypes.DECIMAL(18, 3),
       allowNull: true,
-      field: 'settlementRate'
+      field: 'settlementRate',
     },
     rent: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'rent'
+      field: 'rent',
     },
     morningTime1: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'morningTime1'
+      field: 'morningTime1',
     },
     nightTime1: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'nightTime1'
+      field: 'nightTime1',
     },
     morningTime2: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'morningTime2'
+      field: 'morningTime2',
     },
     nightTime2: {
       type: DataTypes.STRING(50),
       allowNull: true,
-      field: 'nightTime2'
+      field: 'nightTime2',
     },
     posImg: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      field: 'posImg'
+      field: 'posImg',
     },
     posImgName: {
       type: DataTypes.STRING(255),
       allowNull: true,
-      field: 'posImgName'
+      field: 'posImgName',
     },
     IsSelf: {
       type: DataTypes.INTEGER,
       allowNull: true,
-      field: 'IsSelf'
-    }
+      field: 'IsSelf',
+    },
   },
   {
     sequelize,
     tableName: 'Shop',
     freezeTableName: true,
-    timestamps: false
+    timestamps: false,
   }
 );
 
-export default Shop; 
+export default Shop;

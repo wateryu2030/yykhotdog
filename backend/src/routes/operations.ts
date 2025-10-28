@@ -8,10 +8,10 @@ const router = Router();
 router.get('/stores', async (req: Request, res: Response) => {
   try {
     const { province, city, district, status, page = 1, limit = 20 } = req.query;
-    
+
     let whereClause = 'WHERE s.delflag = 0';
     const params: any = {};
-    
+
     if (province) {
       whereClause += ' AND s.province = :province';
       params.province = province;
@@ -82,12 +82,12 @@ router.get('/stores', async (req: Request, res: Response) => {
 
     const stores = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: { ...params, offset, limit: parseInt(limit as string) }
+      replacements: { ...params, offset, limit: parseInt(limit as string) },
     });
 
     const countResult = await sequelize.query(countQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
 
     const total = (countResult[0] as any).total;
@@ -99,15 +99,15 @@ router.get('/stores', async (req: Request, res: Response) => {
         page: parseInt(page as string),
         limit: parseInt(limit as string),
         total,
-        pages: Math.ceil(total / parseInt(limit as string))
-      }
+        pages: Math.ceil(total / parseInt(limit as string)),
+      },
     });
   } catch (error) {
     console.error('获取门店列表失败:', error);
     res.status(500).json({
       success: false,
       error: '获取门店列表失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -116,7 +116,7 @@ router.get('/stores', async (req: Request, res: Response) => {
 router.get('/stores/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    
+
     const query = `
       SELECT 
         s.id,
@@ -171,26 +171,26 @@ router.get('/stores/:id', async (req: Request, res: Response) => {
 
     const result = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: { id: parseInt(id) }
+      replacements: { id: parseInt(id) },
     });
 
     if (result.length === 0) {
       return res.status(404).json({
         success: false,
-        error: '门店不存在'
+        error: '门店不存在',
       });
     }
 
     res.json({
       success: true,
-      data: result[0]
+      data: result[0],
     });
   } catch (error) {
     console.error('获取门店详情失败:', error);
     res.status(500).json({
       success: false,
       error: '获取门店详情失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -199,36 +199,36 @@ router.get('/stores/:id', async (req: Request, res: Response) => {
 router.get('/orders/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    
+
     const orderQuery = `
       SELECT 
         o.*
       FROM orders o
       WHERE o.id = :orderId AND o.delflag = 0
     `;
-    
+
     const result = await sequelize.query(orderQuery, {
       type: QueryTypes.SELECT,
-      replacements: { orderId: id }
+      replacements: { orderId: id },
     });
-    
+
     if (result.length === 0) {
       return res.status(404).json({
         success: false,
-        error: '订单不存在'
+        error: '订单不存在',
       });
     }
-    
+
     res.json({
       success: true,
-      data: result[0]
+      data: result[0],
     });
   } catch (error) {
     console.error('获取订单详情失败:', error);
     res.status(500).json({
       success: false,
       error: '获取订单详情失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -238,10 +238,10 @@ router.get('/orders/store/:storeId', async (req: Request, res: Response) => {
   try {
     const { storeId } = req.params;
     const { page = 1, limit = 20, startDate, endDate, timeType = 'today' } = req.query;
-    
+
     let dateCondition = '';
     const params: any = { storeId: parseInt(storeId) };
-    
+
     if (startDate && endDate) {
       dateCondition = 'AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate';
       params.startDate = startDate;
@@ -251,9 +251,9 @@ router.get('/orders/store/:storeId', async (req: Request, res: Response) => {
     } else if (timeType === 'yesterday') {
       dateCondition = 'AND CAST(o.created_at AS DATE) = CAST(DATEADD(day, -1, GETDATE()) AS DATE)';
     }
-    
+
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
-    
+
     const query = `
       SELECT 
         o.id,
@@ -271,7 +271,7 @@ router.get('/orders/store/:storeId', async (req: Request, res: Response) => {
       OFFSET :offset ROWS
       FETCH NEXT :limit ROWS ONLY
     `;
-    
+
     // 获取总数
     const countQuery = `
       SELECT COUNT(*) as total
@@ -280,17 +280,17 @@ router.get('/orders/store/:storeId', async (req: Request, res: Response) => {
         AND o.delflag = 0
         ${dateCondition}
     `;
-    
+
     const orders = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: { ...params, offset, limit: parseInt(limit as string) }
+      replacements: { ...params, offset, limit: parseInt(limit as string) },
     });
-    
+
     const countResult = await sequelize.query(countQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
-    
+
     const total = (countResult[0] as any).total;
 
     res.json({
@@ -301,16 +301,16 @@ router.get('/orders/store/:storeId', async (req: Request, res: Response) => {
           total,
           page: parseInt(page as string),
           limit: parseInt(limit as string),
-          totalPages: Math.ceil(total / parseInt(limit as string))
-        }
-      }
+          totalPages: Math.ceil(total / parseInt(limit as string)),
+        },
+      },
     });
   } catch (error) {
     console.error('获取门店订单列表失败:', error);
     res.status(500).json({
       success: false,
       error: '获取门店订单列表失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -320,23 +320,23 @@ router.get('/stores/:id/orders', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { page = 1, limit = 20, startDate, endDate } = req.query;
-    
+
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
-    
+
     // 构建日期过滤条件
     let dateCondition = '';
-    const params: any = { 
+    const params: any = {
       storeId: parseInt(id),
       offset,
-      limit: parseInt(limit as string)
+      limit: parseInt(limit as string),
     };
-    
+
     if (startDate && endDate) {
       dateCondition = 'AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate';
       params.startDate = startDate;
       params.endDate = endDate;
     }
-    
+
     // 获取订单列表
     const query = `
       SELECT 
@@ -355,7 +355,7 @@ router.get('/stores/:id/orders', async (req: Request, res: Response) => {
       OFFSET :offset ROWS
       FETCH NEXT :limit ROWS ONLY
     `;
-    
+
     // 获取总数
     const countQuery = `
       SELECT COUNT(*) as total
@@ -364,19 +364,19 @@ router.get('/stores/:id/orders', async (req: Request, res: Response) => {
         AND o.delflag = 0
         ${dateCondition}
     `;
-    
+
     const orders = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
-    
+
     const countResult = await sequelize.query(countQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
-    
+
     const total = (countResult[0] as any).total;
-    
+
     res.json({
       success: true,
       data: {
@@ -385,16 +385,16 @@ router.get('/stores/:id/orders', async (req: Request, res: Response) => {
           total,
           page: parseInt(page as string),
           limit: parseInt(limit as string),
-          totalPages: Math.ceil(total / parseInt(limit as string))
-        }
-      }
+          totalPages: Math.ceil(total / parseInt(limit as string)),
+        },
+      },
     });
   } catch (error) {
     console.error('获取门店订单明细失败:', error);
     res.status(500).json({
       success: false,
       error: '获取门店订单明细失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -404,23 +404,23 @@ router.get('/stores/:id/customers', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { page = 1, limit = 20, startDate, endDate } = req.query;
-    
+
     const offset = (parseInt(page as string) - 1) * parseInt(limit as string);
-    
+
     // 构建日期过滤条件
     let dateCondition = '';
-    const params: any = { 
+    const params: any = {
       storeId: parseInt(id),
       offset,
-      limit: parseInt(limit as string)
+      limit: parseInt(limit as string),
     };
-    
+
     if (startDate && endDate) {
       dateCondition = 'AND o.created_at BETWEEN :startDate AND :endDate';
       params.startDate = startDate;
       params.endDate = endDate;
     }
-    
+
     // 获取门店客户数据
     const query = `
       SELECT 
@@ -447,7 +447,7 @@ router.get('/stores/:id/customers', async (req: Request, res: Response) => {
       ORDER BY total_spent DESC
       OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY
     `;
-    
+
     // 获取总数
     const countQuery = `
       SELECT COUNT(DISTINCT o.customer_id) as total
@@ -456,19 +456,19 @@ router.get('/stores/:id/customers', async (req: Request, res: Response) => {
         AND o.delflag = 0
         ${dateCondition}
     `;
-    
+
     const customers = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
-    
+
     const countResult = await sequelize.query(countQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
-    
+
     const total = (countResult[0] as any).total;
-    
+
     res.json({
       success: true,
       data: customers,
@@ -476,15 +476,15 @@ router.get('/stores/:id/customers', async (req: Request, res: Response) => {
         total,
         page: parseInt(page as string),
         limit: parseInt(limit as string),
-        totalPages: Math.ceil(total / parseInt(limit as string))
-      }
+        totalPages: Math.ceil(total / parseInt(limit as string)),
+      },
     });
   } catch (error) {
     console.error('获取门店客户明细失败:', error);
     res.status(500).json({
       success: false,
       error: '获取门店客户明细失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -493,7 +493,7 @@ router.get('/stores/:id/customers', async (req: Request, res: Response) => {
 router.get('/orders/detail/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    
+
     const orderQuery = `
       SELECT 
         o.*,
@@ -504,29 +504,29 @@ router.get('/orders/detail/:id', async (req: Request, res: Response) => {
       LEFT JOIN stores s ON o.store_id = s.id
       WHERE o.id = :orderId AND o.delflag = 0
     `;
-    
+
     const result = await sequelize.query(orderQuery, {
       type: QueryTypes.SELECT,
-      replacements: { orderId: id }
+      replacements: { orderId: id },
     });
-    
+
     if (result.length === 0) {
       return res.status(404).json({
         success: false,
-        error: '订单不存在'
+        error: '订单不存在',
       });
     }
-    
+
     res.json({
       success: true,
-      data: result[0]
+      data: result[0],
     });
   } catch (error) {
     console.error('获取订单详情失败:', error);
     res.status(500).json({
       success: false,
       error: '获取订单详情失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -535,7 +535,7 @@ router.get('/orders/detail/:id', async (req: Request, res: Response) => {
 router.get('/orders/full-detail/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    
+
     // 获取订单基本信息
     const orderQuery = `
       SELECT 
@@ -547,7 +547,7 @@ router.get('/orders/full-detail/:id', async (req: Request, res: Response) => {
       LEFT JOIN stores s ON o.store_id = s.id
       WHERE o.id = :orderId AND o.delflag = 0
     `;
-    
+
     // 获取订单商品明细
     const itemsQuery = `
       SELECT 
@@ -562,37 +562,37 @@ router.get('/orders/full-detail/:id', async (req: Request, res: Response) => {
       WHERE oi.order_id = :orderId AND oi.delflag = 0
       ORDER BY oi.id
     `;
-    
+
     const orderResult = await sequelize.query(orderQuery, {
       type: QueryTypes.SELECT,
-      replacements: { orderId: id }
+      replacements: { orderId: id },
     });
-    
+
     const itemsResult = await sequelize.query(itemsQuery, {
       type: QueryTypes.SELECT,
-      replacements: { orderId: id }
+      replacements: { orderId: id },
     });
-    
+
     if (orderResult.length === 0) {
       return res.status(404).json({
         success: false,
-        error: '订单不存在'
+        error: '订单不存在',
       });
     }
-    
+
     res.json({
       success: true,
       data: {
         order: orderResult[0],
-        items: itemsResult
-      }
+        items: itemsResult,
+      },
     });
   } catch (error) {
     console.error('获取订单完整详情失败:', error);
     res.status(500).json({
       success: false,
       error: '获取订单完整详情失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -601,7 +601,7 @@ router.get('/orders/full-detail/:id', async (req: Request, res: Response) => {
 router.get('/orders/:id/items', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    
+
     const itemsQuery = `
       SELECT 
         oi.id,
@@ -615,22 +615,22 @@ router.get('/orders/:id/items', async (req: Request, res: Response) => {
       WHERE oi.order_id = :orderId AND oi.delflag = 0
       ORDER BY oi.id
     `;
-    
+
     const result = await sequelize.query(itemsQuery, {
       type: QueryTypes.SELECT,
-      replacements: { orderId: id }
+      replacements: { orderId: id },
     });
-    
+
     res.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
     console.error('获取订单商品明细失败:', error);
     res.status(500).json({
       success: false,
       error: '获取订单商品明细失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -661,7 +661,7 @@ router.post('/stores', async (req: Request, res: Response) => {
       establish_time,
       opening_time,
       is_self,
-      is_close
+      is_close,
     } = req.body;
 
     const insertQuery = `
@@ -703,20 +703,20 @@ router.post('/stores', async (req: Request, res: Response) => {
         establish_time,
         opening_time,
         is_self,
-        is_close
-      }
+        is_close,
+      },
     });
 
     res.json({
       success: true,
-      message: '门店添加成功'
+      message: '门店添加成功',
     });
   } catch (error) {
     console.error('添加门店失败:', error);
     res.status(500).json({
       success: false,
       error: '添加门店失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -726,7 +726,7 @@ router.put('/stores/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
-    
+
     const updateFields = Object.keys(updateData)
       .filter(key => updateData[key] !== undefined)
       .map(key => `${key} = :${key}`)
@@ -735,7 +735,7 @@ router.put('/stores/:id', async (req: Request, res: Response) => {
     if (updateFields.length === 0) {
       return res.status(400).json({
         success: false,
-        error: '没有要更新的字段'
+        error: '没有要更新的字段',
       });
     }
 
@@ -747,19 +747,19 @@ router.put('/stores/:id', async (req: Request, res: Response) => {
 
     const result = await sequelize.query(updateQuery, {
       type: QueryTypes.UPDATE,
-      replacements: { ...updateData, id: parseInt(id) }
+      replacements: { ...updateData, id: parseInt(id) },
     });
 
     res.json({
       success: true,
-      message: '门店更新成功'
+      message: '门店更新成功',
     });
   } catch (error) {
     console.error('更新门店失败:', error);
     res.status(500).json({
       success: false,
       error: '更新门店失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -768,7 +768,7 @@ router.put('/stores/:id', async (req: Request, res: Response) => {
 router.delete('/stores/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    
+
     const updateQuery = `
       UPDATE stores 
       SET delflag = 1, updated_at = GETDATE()
@@ -777,19 +777,19 @@ router.delete('/stores/:id', async (req: Request, res: Response) => {
 
     await sequelize.query(updateQuery, {
       type: QueryTypes.UPDATE,
-      replacements: { id: parseInt(id) }
+      replacements: { id: parseInt(id) },
     });
 
     res.json({
       success: true,
-      message: '门店删除成功'
+      message: '门店删除成功',
     });
   } catch (error) {
     console.error('删除门店失败:', error);
     res.status(500).json({
       success: false,
       error: '删除门店失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -799,10 +799,10 @@ router.get('/hourly-stats/:storeId', async (req: Request, res: Response) => {
   try {
     const { storeId } = req.params;
     const { startDate, endDate, timeType = 'today' } = req.query;
-    
+
     let dateCondition = '';
     const params: any = { storeId: parseInt(storeId) };
-    
+
     if (startDate && endDate) {
       dateCondition = 'AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate';
       params.startDate = startDate;
@@ -815,19 +815,19 @@ router.get('/hourly-stats/:storeId', async (req: Request, res: Response) => {
         WHERE store_id = :storeId AND delflag = 0 AND pay_state = 2
         ORDER BY created_at DESC
       `;
-      
+
       const latestDateResult = await sequelize.query(latestDateQuery, {
         type: QueryTypes.SELECT,
-        replacements: { storeId: parseInt(storeId) }
+        replacements: { storeId: parseInt(storeId) },
       });
-      
+
       const latestDate = latestDateResult[0] as any;
       const targetDate = latestDate?.latest_date || new Date().toISOString().split('T')[0];
-      
+
       dateCondition = 'AND CAST(o.created_at AS DATE) = :targetDate';
       params.targetDate = targetDate;
     }
-    
+
     const query = `
       SELECT 
         DATEPART(HOUR, o.created_at) as hour,
@@ -841,22 +841,22 @@ router.get('/hourly-stats/:storeId', async (req: Request, res: Response) => {
       GROUP BY DATEPART(HOUR, o.created_at)
       ORDER BY hour
     `;
-    
+
     const result = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
-    
+
     res.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
     console.error('获取分时段统计失败:', error);
     res.status(500).json({
       success: false,
       error: '获取分时段统计失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -866,10 +866,10 @@ router.get('/payment-stats/:storeId', async (req: Request, res: Response) => {
   try {
     const { storeId } = req.params;
     const { startDate, endDate, timeType = 'today' } = req.query;
-    
+
     let dateCondition = '';
     const params: any = { storeId: parseInt(storeId) };
-    
+
     if (startDate && endDate) {
       dateCondition = 'AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate';
       params.startDate = startDate;
@@ -882,19 +882,19 @@ router.get('/payment-stats/:storeId', async (req: Request, res: Response) => {
         WHERE store_id = :storeId AND delflag = 0 AND pay_state = 2
         ORDER BY created_at DESC
       `;
-      
+
       const latestDateResult = await sequelize.query(latestDateQuery, {
         type: QueryTypes.SELECT,
-        replacements: { storeId: parseInt(storeId) }
+        replacements: { storeId: parseInt(storeId) },
       });
-      
+
       const latestDate = latestDateResult[0] as any;
       const targetDate = latestDate?.latest_date || new Date().toISOString().split('T')[0];
-      
+
       dateCondition = 'AND CAST(o.created_at AS DATE) = :targetDate';
       params.targetDate = targetDate;
     }
-    
+
     const query = `
       SELECT 
         o.pay_mode as payment_method,
@@ -908,22 +908,22 @@ router.get('/payment-stats/:storeId', async (req: Request, res: Response) => {
       GROUP BY o.pay_mode
       ORDER BY total_amount DESC
     `;
-    
+
     const result = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
-    
+
     res.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
     console.error('获取支付方式统计失败:', error);
     res.status(500).json({
       success: false,
       error: '获取支付方式统计失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -933,10 +933,10 @@ router.get('/product-stats/:storeId', async (req: Request, res: Response) => {
   try {
     const { storeId } = req.params;
     const { startDate, endDate, timeType = 'today' } = req.query;
-    
+
     let dateCondition = '';
     const params: any = { storeId: parseInt(storeId) };
-    
+
     if (startDate && endDate) {
       dateCondition = 'AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate';
       params.startDate = startDate;
@@ -949,39 +949,39 @@ router.get('/product-stats/:storeId', async (req: Request, res: Response) => {
         WHERE store_id = :storeId AND delflag = 0 AND pay_state = 2
         ORDER BY created_at DESC
       `;
-      
+
       const latestDateResult = await sequelize.query(latestDateQuery, {
         type: QueryTypes.SELECT,
-        replacements: { storeId: parseInt(storeId) }
+        replacements: { storeId: parseInt(storeId) },
       });
-      
+
       const latestDate = latestDateResult[0] as any;
       const targetDate = latestDate?.latest_date || new Date().toISOString().split('T')[0];
-      
+
       dateCondition = 'AND CAST(o.created_at AS DATE) = :targetDate';
       params.targetDate = targetDate;
     }
-    
+
     // 先检查order_items表是否存在
     const checkTableQuery = `
       SELECT COUNT(*) as count 
       FROM INFORMATION_SCHEMA.TABLES 
       WHERE TABLE_NAME = 'order_items'
     `;
-    
+
     const tableExists = await sequelize.query(checkTableQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
-    
+
     if (!tableExists || (tableExists[0] as any).count === 0) {
       // 如果order_items表不存在，返回空数据
       res.json({
         success: true,
-        data: []
+        data: [],
       });
       return;
     }
-    
+
     const query = `
       SELECT 
         oi.product_name,
@@ -1000,19 +1000,19 @@ router.get('/product-stats/:storeId', async (req: Request, res: Response) => {
 
     const result = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
 
     res.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
     console.error('获取商品销售统计失败:', error);
     // 如果查询失败，返回空数据而不是错误
     res.json({
       success: true,
-      data: []
+      data: [],
     });
   }
 });
@@ -1021,7 +1021,7 @@ router.get('/product-stats/:storeId', async (req: Request, res: Response) => {
 router.get('/overview', async (req: Request, res: Response) => {
   try {
     const { timeType = 'today' } = req.query;
-    
+
     // 获取最近有数据的日期
     const latestDateQuery = `
       SELECT TOP 1 CAST(created_at AS DATE) as latest_date
@@ -1029,14 +1029,14 @@ router.get('/overview', async (req: Request, res: Response) => {
       WHERE delflag = 0 AND pay_state = 2
       ORDER BY created_at DESC
     `;
-    
+
     const latestDateResult = await sequelize.query(latestDateQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
-    
+
     const latestDate = latestDateResult[0] as any;
     const dateStr = latestDate?.latest_date || new Date().toISOString().split('T')[0];
-    
+
     // 超简查询 - 只查询最基本的统计数据
     const basicStatsQuery = `
       SELECT TOP 1
@@ -1048,14 +1048,14 @@ router.get('/overview', async (req: Request, res: Response) => {
         AND pay_state = 2
         AND CAST(created_at AS DATE) = :targetDate
     `;
-    
+
     // 查询客户总数
     const customerStatsQuery = `
       SELECT COUNT(*) as total_customers
       FROM customers 
       WHERE delflag = 0
     `;
-    
+
     // 门店统计查询 - 包含城市统计
     const storeStatsQuery = `
       SELECT 
@@ -1066,25 +1066,25 @@ router.get('/overview', async (req: Request, res: Response) => {
       WHERE delflag = 0 
         AND status = 'active'
     `;
-    
+
     // 执行查询
     const todayResult = await sequelize.query(basicStatsQuery, {
       type: QueryTypes.SELECT,
-      replacements: { targetDate: dateStr }
+      replacements: { targetDate: dateStr },
     });
-    
+
     const customerResult = await sequelize.query(customerStatsQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
-    
+
     const storeResult = await sequelize.query(storeStatsQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
-    
+
     const today = todayResult[0] as any;
     const customerStats = customerResult[0] as any;
     const storeStats = storeResult[0] as any;
-    
+
     // 返回修复的数据结构
     const overviewData = {
       kpis: {
@@ -1094,30 +1094,30 @@ router.get('/overview', async (req: Request, res: Response) => {
         totalCustomers: customerStats?.total_customers || 0,
         operatingStores: storeStats?.operating_stores || 0,
         operatingCities: storeStats?.operating_cities || 0,
-        operatingProvinces: storeStats?.operating_provinces || 0
+        operatingProvinces: storeStats?.operating_provinces || 0,
       },
       summary: {
         dateRange: {
           start: dateStr,
           end: dateStr,
-          type: timeType
+          type: timeType,
         },
         filters: {
-          city: '全部'
-        }
-      }
+          city: '全部',
+        },
+      },
     };
-    
+
     res.json({
       success: true,
-      data: overviewData
+      data: overviewData,
     });
   } catch (error) {
     console.error('获取运营概览数据失败:', error);
     res.status(500).json({
       success: false,
       error: '获取运营概览数据失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -1127,10 +1127,10 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
   try {
     const { storeId } = req.params;
     const { startDate, endDate, timeType = 'today' } = req.query;
-    
+
     let dateCondition = '';
     const params: any = { storeId: parseInt(storeId) };
-    
+
     if (startDate && endDate) {
       // 如果传入了具体的日期范围，优先使用
       dateCondition = 'AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate';
@@ -1144,19 +1144,19 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
         WHERE store_id = :storeId AND delflag = 0 AND pay_state = 2
         ORDER BY created_at DESC
       `;
-      
+
       const latestDateResult = await sequelize.query(latestDateQuery, {
         type: QueryTypes.SELECT,
-        replacements: { storeId: parseInt(storeId) }
+        replacements: { storeId: parseInt(storeId) },
       });
-      
+
       const latestDate = latestDateResult[0] as any;
       const targetDate = latestDate?.latest_date || new Date().toISOString().split('T')[0];
-      
+
       dateCondition = 'AND CAST(o.created_at AS DATE) = :targetDate';
       params.targetDate = targetDate;
     }
-    
+
     // 获取门店基本信息
     const storeQuery = `
       SELECT 
@@ -1186,19 +1186,19 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
       FROM stores s
       WHERE s.id = :storeId AND s.delflag = 0
     `;
-    
+
     const storeResult = await sequelize.query(storeQuery, {
       type: QueryTypes.SELECT,
-      replacements: { storeId: parseInt(storeId) }
+      replacements: { storeId: parseInt(storeId) },
     });
-    
+
     if (storeResult.length === 0) {
       return res.status(404).json({
         success: false,
-        error: '门店不存在'
+        error: '门店不存在',
       });
     }
-    
+
     // 获取销售数据 - 移除pay_state过滤，统计所有订单
     const salesQuery = `
       SELECT 
@@ -1211,24 +1211,25 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
         AND o.delflag = 0
         ${dateCondition}
     `;
-    
+
     // 添加调试日志
     console.log('【调试】门店仪表板查询参数:', params);
     console.log('【调试】日期条件:', dateCondition);
     console.log('【调试】销售查询SQL:', salesQuery);
-    
+
     const salesResult = await sequelize.query(salesQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
-    
+
     console.log('【调试】销售查询结果:', salesResult);
-    
+
     // 获取昨日对比数据
-    const yesterdayCondition = timeType === 'today' 
-      ? 'AND CAST(o.created_at AS DATE) = CAST(DATEADD(day, -1, GETDATE()) AS DATE)'
-      : '';
-    
+    const yesterdayCondition =
+      timeType === 'today'
+        ? 'AND CAST(o.created_at AS DATE) = CAST(DATEADD(day, -1, GETDATE()) AS DATE)'
+        : '';
+
     const yesterdayQuery = `
       SELECT 
         COUNT(*) as yesterday_orders,
@@ -1239,25 +1240,28 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
         AND o.delflag = 0
         ${yesterdayCondition}
     `;
-    
+
     const yesterdayResult = await sequelize.query(yesterdayQuery, {
       type: QueryTypes.SELECT,
-      replacements: { storeId: parseInt(storeId) }
+      replacements: { storeId: parseInt(storeId) },
     });
-    
+
     const sales = salesResult[0] as any;
     const yesterday = yesterdayResult[0] as any;
-    
+
     // 计算趋势
     const calculateTrend = (current: number, previous: number) => {
       if (previous === 0) return current > 0 ? 100 : 0;
       return ((current - previous) / previous) * 100;
     };
-    
+
     const salesTrend = calculateTrend(sales?.total_sales || 0, yesterday?.yesterday_sales || 0);
     const ordersTrend = calculateTrend(sales?.total_orders || 0, yesterday?.yesterday_orders || 0);
-    const avgOrderTrend = calculateTrend(sales?.avg_order_value || 0, yesterday?.yesterday_avg_order_value || 0);
-    
+    const avgOrderTrend = calculateTrend(
+      sales?.avg_order_value || 0,
+      yesterday?.yesterday_avg_order_value || 0
+    );
+
     // 获取最近订单
     const recentOrdersQuery = `
       SELECT TOP 5
@@ -1274,12 +1278,12 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
         ${dateCondition}
       ORDER BY o.created_at DESC
     `;
-    
+
     const recentOrdersResult = await sequelize.query(recentOrdersQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
-    
+
     const dashboardData = {
       store: storeResult[0],
       kpis: {
@@ -1287,43 +1291,43 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
         target: Math.max(500, (sales?.total_sales || 0) * 1.2), // 基于实际销售额动态设置目标
         totalSales: sales?.total_sales || 0,
         totalSalesTrend: {
-          vsYesterday: salesTrend
+          vsYesterday: salesTrend,
         },
         transactions: sales?.total_orders || 0,
         transactionsTrend: {
-          vsYesterday: ordersTrend
+          vsYesterday: ordersTrend,
         },
         avgSpend: sales?.avg_order_value || 0,
         avgSpendTrend: {
-          vsYesterday: avgOrderTrend
+          vsYesterday: avgOrderTrend,
         },
-        newMembers: sales?.unique_customers || 0
+        newMembers: sales?.unique_customers || 0,
       },
       salesChart: {
         labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'],
-        data: [0, 0, 0, 0, 0, 0]
+        data: [0, 0, 0, 0, 0, 0],
       },
       aiScore: {
-        total: 75
+        total: 75,
       },
       charts: {
         hourlyStats: [],
         paymentStats: [],
-        productStats: []
+        productStats: [],
       },
-      recentOrders: recentOrdersResult || []
+      recentOrders: recentOrdersResult || [],
     };
-    
+
     res.json({
       success: true,
-      data: dashboardData
+      data: dashboardData,
     });
   } catch (error) {
     console.error('获取门店运营数据失败:', error);
     res.status(500).json({
       success: false,
       error: '获取门店运营数据失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -1332,52 +1336,55 @@ router.get('/dashboard/:storeId', async (req: Request, res: Response) => {
 router.get('/check-cyrg2025-xiantao', async (req: Request, res: Response) => {
   try {
     // 首先检查cyrg2025数据库中的表结构
-    const tablesQuery = "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME";
+    const tablesQuery =
+      "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME";
     const tablesResult = await cyrg2025Sequelize.query(tablesQuery, { type: QueryTypes.SELECT });
     console.log('cyrg2025数据库中的表:', tablesResult);
-    
+
     let result: any = {
       tables: tablesResult,
       stores: [],
-      orders: []
+      orders: [],
     };
-    
+
     // 查找可能的门店表
-    const storeTables = tablesResult.filter((table: any) => 
-      (table as any).TABLE_NAME.toLowerCase().includes('store') || 
-      (table as any).TABLE_NAME.toLowerCase().includes('shop') ||
-      (table as any).TABLE_NAME.toLowerCase().includes('门店')
+    const storeTables = tablesResult.filter(
+      (table: any) =>
+        (table as any).TABLE_NAME.toLowerCase().includes('store') ||
+        (table as any).TABLE_NAME.toLowerCase().includes('shop') ||
+        (table as any).TABLE_NAME.toLowerCase().includes('门店')
     );
-    
+
     console.log('可能的门店表:', storeTables);
-    
+
     if (storeTables.length > 0) {
       const storeTableName = (storeTables[0] as any).TABLE_NAME;
-      
+
       // 检查门店表结构
       const columnsQuery = `SELECT COLUMN_NAME, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '${storeTableName}' ORDER BY ORDINAL_POSITION`;
-      const columnsResult = await cyrg2025Sequelize.query(columnsQuery, { type: QueryTypes.SELECT });
+      const columnsResult = await cyrg2025Sequelize.query(columnsQuery, {
+        type: QueryTypes.SELECT,
+      });
       console.log(`表 ${storeTableName} 的列结构:`, columnsResult);
-      
+
       // 查找仙桃相关门店
       const storesQuery = `SELECT * FROM ${storeTableName} WHERE store_name LIKE '%仙桃%' OR name LIKE '%仙桃%' OR title LIKE '%仙桃%'`;
       const storesResult = await cyrg2025Sequelize.query(storesQuery, { type: QueryTypes.SELECT });
       console.log('cyrg2025中的仙桃相关门店:', storesResult);
-      
+
       result.stores = storesResult;
     }
-    
+
     res.json({
       success: true,
-      data: result
+      data: result,
     });
-    
   } catch (error) {
     console.error('查询cyrg2025失败:', error);
     res.status(500).json({
       success: false,
       error: '查询cyrg2025失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -1386,10 +1393,10 @@ router.get('/check-cyrg2025-xiantao', async (req: Request, res: Response) => {
 router.get('/gis-map', async (req: Request, res: Response) => {
   try {
     const { status, city, type } = req.query;
-    
+
     let whereClause = 'WHERE s.delflag = 0 AND s.longitude IS NOT NULL AND s.latitude IS NOT NULL';
     const params: any = {};
-    
+
     if (status) {
       whereClause += ' AND s.status = :status';
       params.status = status;
@@ -1402,7 +1409,7 @@ router.get('/gis-map', async (req: Request, res: Response) => {
       whereClause += ' AND s.store_code LIKE :type';
       params.type = type === 'potential' ? 'RG_%' : 'NOT LIKE RG_%';
     }
-    
+
     const mapQuery = `
       SELECT 
         s.id,
@@ -1446,12 +1453,12 @@ router.get('/gis-map', async (req: Request, res: Response) => {
                s.address, s.longitude, s.latitude, s.is_self, s.blurb, s.created_at
       ORDER BY s.created_at DESC
     `;
-    
+
     const result = await sequelize.query(mapQuery, {
       type: QueryTypes.SELECT,
-      replacements: params
+      replacements: params,
     });
-    
+
     // 统计不同类型门店数量
     const statsQuery = `
       SELECT 
@@ -1463,25 +1470,25 @@ router.get('/gis-map', async (req: Request, res: Response) => {
       FROM stores s
       WHERE s.delflag = 0 AND s.longitude IS NOT NULL AND s.latitude IS NOT NULL
     `;
-    
+
     const stats = await sequelize.query(statsQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
-    
+
     res.json({
       success: true,
       data: {
         stores: result,
         statistics: stats[0],
-        total: result.length
-      }
+        total: result.length,
+      },
     });
   } catch (error) {
     console.error('获取GIS地图数据失败:', error);
     res.status(500).json({
       success: false,
       error: '获取GIS地图数据失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -1490,7 +1497,7 @@ router.get('/gis-map', async (req: Request, res: Response) => {
 router.get('/stores/:id/map-details', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    
+
     const storeQuery = `
       SELECT 
         s.*,
@@ -1515,19 +1522,19 @@ router.get('/stores/:id/map-details', async (req: Request, res: Response) => {
       LEFT JOIN rg_seek_shop rgs ON s.store_name = rgs.shop_name
       WHERE s.id = :id AND s.delflag = 0
     `;
-    
+
     const store = await sequelize.query(storeQuery, {
       type: QueryTypes.SELECT,
-      replacements: { id }
+      replacements: { id },
     });
-    
+
     if (store.length === 0) {
       return res.status(404).json({
         success: false,
-        error: '门店不存在'
+        error: '门店不存在',
       });
     }
-    
+
     // 如果是营业中的门店，获取运营数据
     let operationData = null;
     if ((store[0] as any).status === '营业中') {
@@ -1540,28 +1547,28 @@ router.get('/stores/:id/map-details', async (req: Request, res: Response) => {
         FROM orders o
         WHERE o.store_id = :storeId AND o.delflag = 0
       `;
-      
+
       const operation = await sequelize.query(operationQuery, {
         type: QueryTypes.SELECT,
-        replacements: { storeId: id }
+        replacements: { storeId: id },
       });
-      
+
       operationData = operation[0];
     }
-    
+
     res.json({
       success: true,
       data: {
         store: store[0],
-        operation: operationData
-      }
+        operation: operationData,
+      },
     });
   } catch (error) {
     console.error('获取门店地图详情失败:', error);
     res.status(500).json({
       success: false,
       error: '获取门店地图详情失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -1591,21 +1598,27 @@ router.get('/city-sales-trend', async (req: Request, res: Response) => {
     `;
 
     const result = await sequelize.query(query, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     // 计算增长趋势
     const citiesWithTrend = result.map((city: any) => {
-      const totalDays = city.first_order_date && city.last_order_date 
-        ? Math.ceil((new Date(city.last_order_date).getTime() - new Date(city.first_order_date).getTime()) / (1000 * 60 * 60 * 24)) + 1
-        : 1;
-      
+      const totalDays =
+        city.first_order_date && city.last_order_date
+          ? Math.ceil(
+              (new Date(city.last_order_date).getTime() -
+                new Date(city.first_order_date).getTime()) /
+                (1000 * 60 * 60 * 24)
+            ) + 1
+          : 1;
+
       const dailyAvgOrders = city.total_orders / totalDays;
       const dailyAvgRevenue = (city.total_revenue || 0) / totalDays;
-      
+
       // 计算近期vs历史平均的增长趋势
       const recent30dDailyAvg = (city.recent_orders_30d || 0) / 30;
-      const growthRate = dailyAvgOrders > 0 ? ((recent30dDailyAvg - dailyAvgOrders) / dailyAvgOrders) * 100 : 0;
+      const growthRate =
+        dailyAvgOrders > 0 ? ((recent30dDailyAvg - dailyAvgOrders) / dailyAvgOrders) * 100 : 0;
 
       return {
         ...city,
@@ -1613,20 +1626,20 @@ router.get('/city-sales-trend', async (req: Request, res: Response) => {
         daily_avg_orders: Math.round(dailyAvgOrders * 100) / 100,
         daily_avg_revenue: Math.round(dailyAvgRevenue * 100) / 100,
         growth_rate: Math.round(growthRate * 100) / 100,
-        growth_trend: growthRate > 5 ? 'up' : growthRate < -5 ? 'down' : 'stable'
+        growth_trend: growthRate > 5 ? 'up' : growthRate < -5 ? 'down' : 'stable',
       };
     });
 
     res.json({
       success: true,
-      data: citiesWithTrend
+      data: citiesWithTrend,
     });
   } catch (error) {
     console.error('获取城市销售趋势失败:', error);
     res.status(500).json({
       success: false,
       error: '获取城市销售趋势失败',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -1657,21 +1670,27 @@ router.get('/product-sales-trend', async (req: Request, res: Response) => {
     `;
 
     const result = await sequelize.query(query, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     // 计算增长趋势和分类
     const productsWithTrend = result.map((product: any, index: number) => {
-      const totalDays = product.first_order_date && product.last_order_date 
-        ? Math.ceil((new Date(product.last_order_date).getTime() - new Date(product.first_order_date).getTime()) / (1000 * 60 * 60 * 24)) + 1
-        : 1;
-      
+      const totalDays =
+        product.first_order_date && product.last_order_date
+          ? Math.ceil(
+              (new Date(product.last_order_date).getTime() -
+                new Date(product.first_order_date).getTime()) /
+                (1000 * 60 * 60 * 24)
+            ) + 1
+          : 1;
+
       const dailyAvgOrders = product.order_count / totalDays;
       const dailyAvgRevenue = (product.total_revenue || 0) / totalDays;
-      
+
       // 计算近期vs历史平均的增长趋势
       const recent30dDailyAvg = (product.recent_orders_30d || 0) / 30;
-      const growthRate = dailyAvgOrders > 0 ? ((recent30dDailyAvg - dailyAvgOrders) / dailyAvgOrders) * 100 : 0;
+      const growthRate =
+        dailyAvgOrders > 0 ? ((recent30dDailyAvg - dailyAvgOrders) / dailyAvgOrders) * 100 : 0;
 
       // 商品分类（基于名称关键词）
       let category = '其他';
@@ -1693,20 +1712,20 @@ router.get('/product-sales-trend', async (req: Request, res: Response) => {
         daily_avg_orders: Math.round(dailyAvgOrders * 100) / 100,
         daily_avg_revenue: Math.round(dailyAvgRevenue * 100) / 100,
         growth_rate: Math.round(growthRate * 100) / 100,
-        growth_trend: growthRate > 5 ? 'up' : growthRate < -5 ? 'down' : 'stable'
+        growth_trend: growthRate > 5 ? 'up' : growthRate < -5 ? 'down' : 'stable',
       };
     });
 
     res.json({
       success: true,
-      data: productsWithTrend
+      data: productsWithTrend,
     });
   } catch (error) {
     console.error('获取商品销售趋势失败:', error);
     res.status(500).json({
       success: false,
       error: '获取商品销售趋势失败',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -1717,14 +1736,14 @@ router.get('/real-time-stats', async (req: Request, res: Response) => {
     const { date } = req.query;
     const selectedDate = date ? new Date(date as string) : new Date();
     const dateStr = selectedDate.toISOString().split('T')[0]; // YYYY-MM-DD format
-    
+
     // 计算基于选定日期的相对日期
     const selectedDateObj = new Date(dateStr);
     const startOfWeek = new Date(selectedDateObj);
     startOfWeek.setDate(selectedDateObj.getDate() - selectedDateObj.getDay()); // 本周开始（周日）
-    
+
     const startOfMonth = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), 1); // 本月开始
-    
+
     const query = `
       SELECT 
         COUNT(DISTINCT s.id) as total_stores,
@@ -1748,8 +1767,8 @@ router.get('/real-time-stats', async (req: Request, res: Response) => {
       replacements: {
         selectedDate: dateStr,
         startOfWeek: startOfWeek.toISOString().split('T')[0],
-        startOfMonth: startOfMonth.toISOString().split('T')[0]
-      }
+        startOfMonth: startOfMonth.toISOString().split('T')[0],
+      },
     });
 
     const stats = result[0] as any;
@@ -1761,28 +1780,28 @@ router.get('/real-time-stats', async (req: Request, res: Response) => {
         stores: {
           total: stats.total_stores || 0,
           operating: stats.operating_stores || 0,
-          preparing: stats.preparing_stores || 0
+          preparing: stats.preparing_stores || 0,
         },
         orders: {
           total: stats.total_orders || 0,
           today: stats.today_orders || 0,
           week: stats.week_orders || 0,
-          month: stats.month_orders || 0
+          month: stats.month_orders || 0,
         },
         revenue: {
           total: stats.total_revenue || 0,
           today: stats.today_revenue || 0,
           week: stats.week_revenue || 0,
-          month: stats.month_revenue || 0
-        }
-      }
+          month: stats.month_revenue || 0,
+        },
+      },
     });
   } catch (error) {
     console.error('获取实时运营数据失败:', error);
     res.status(500).json({
       success: false,
       error: '获取实时运营数据失败',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -1791,7 +1810,7 @@ router.get('/real-time-stats', async (req: Request, res: Response) => {
 router.get('/top-products', async (req: Request, res: Response) => {
   try {
     const { limit = 10 } = req.query;
-    
+
     const query = `
       SELECT TOP ${parseInt(limit as string)}
         oi.product_name,
@@ -1812,7 +1831,7 @@ router.get('/top-products', async (req: Request, res: Response) => {
     `;
 
     const result = await sequelize.query(query, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     // 添加排名和分类
@@ -1830,28 +1849,41 @@ router.get('/top-products', async (req: Request, res: Response) => {
 
       // 计算近期热度
       const recentWeekAvg = (product.recent_week_orders || 0) / 7;
-      const historicalAvg = (product.order_count || 0) / Math.max(1, Math.ceil((new Date().getTime() - new Date(product.first_sale_date).getTime()) / (1000 * 60 * 60 * 24)));
-      const hotScore = recentWeekAvg > historicalAvg * 1.2 ? 'hot' : recentWeekAvg > historicalAvg * 0.8 ? 'normal' : 'cool';
+      const historicalAvg =
+        (product.order_count || 0) /
+        Math.max(
+          1,
+          Math.ceil(
+            (new Date().getTime() - new Date(product.first_sale_date).getTime()) /
+              (1000 * 60 * 60 * 24)
+          )
+        );
+      const hotScore =
+        recentWeekAvg > historicalAvg * 1.2
+          ? 'hot'
+          : recentWeekAvg > historicalAvg * 0.8
+            ? 'normal'
+            : 'cool';
 
       return {
         ...product,
         rank: index + 1,
         category,
         hot_score: hotScore,
-        recent_vs_historical: Math.round((recentWeekAvg / Math.max(historicalAvg, 1)) * 100) / 100
+        recent_vs_historical: Math.round((recentWeekAvg / Math.max(historicalAvg, 1)) * 100) / 100,
       };
     });
 
     res.json({
       success: true,
-      data: productsWithRank
+      data: productsWithRank,
     });
   } catch (error) {
     console.error('获取热门商品失败:', error);
     res.status(500).json({
       success: false,
       error: '获取热门商品失败',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -1879,19 +1911,25 @@ router.get('/province-analysis', async (req: Request, res: Response) => {
     `;
 
     const result = await sequelize.query(query, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     const provincesWithAnalysis = result.map((province: any) => {
-      const totalDays = province.first_order_date && province.last_order_date 
-        ? Math.ceil((new Date(province.last_order_date).getTime() - new Date(province.first_order_date).getTime()) / (1000 * 60 * 60 * 24)) + 1
-        : 1;
-      
+      const totalDays =
+        province.first_order_date && province.last_order_date
+          ? Math.ceil(
+              (new Date(province.last_order_date).getTime() -
+                new Date(province.first_order_date).getTime()) /
+                (1000 * 60 * 60 * 24)
+            ) + 1
+          : 1;
+
       const dailyAvgOrders = (province.total_orders || 0) / totalDays;
       const dailyAvgRevenue = (province.total_revenue || 0) / totalDays;
-      
+
       const recent30dDailyAvg = (province.recent_orders_30d || 0) / 30;
-      const growthRate = dailyAvgOrders > 0 ? ((recent30dDailyAvg - dailyAvgOrders) / dailyAvgOrders) * 100 : 0;
+      const growthRate =
+        dailyAvgOrders > 0 ? ((recent30dDailyAvg - dailyAvgOrders) / dailyAvgOrders) * 100 : 0;
 
       return {
         ...province,
@@ -1900,20 +1938,23 @@ router.get('/province-analysis', async (req: Request, res: Response) => {
         daily_avg_revenue: Math.round(dailyAvgRevenue * 100) / 100,
         growth_rate: Math.round(growthRate * 100) / 100,
         growth_trend: growthRate > 5 ? 'up' : growthRate < -5 ? 'down' : 'stable',
-        store_density: province.city_count > 0 ? Math.round((province.store_count / province.city_count) * 100) / 100 : 0
+        store_density:
+          province.city_count > 0
+            ? Math.round((province.store_count / province.city_count) * 100) / 100
+            : 0,
       };
     });
 
     res.json({
       success: true,
-      data: provincesWithAnalysis
+      data: provincesWithAnalysis,
     });
   } catch (error) {
     console.error('获取省份分析失败:', error);
     res.status(500).json({
       success: false,
       error: '获取省份分析失败',
-      details: error instanceof Error ? error.message : 'Unknown error'
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
@@ -1922,7 +1963,7 @@ router.get('/province-analysis', async (req: Request, res: Response) => {
 router.get('/payment-stats', async (req: Request, res: Response) => {
   try {
     const { startDate, endDate, timeType = 'today' } = req.query;
-    
+
     // 获取最近有数据的日期
     const latestDateQuery = `
       SELECT TOP 1 CAST(created_at AS DATE) as latest_date
@@ -1930,14 +1971,14 @@ router.get('/payment-stats', async (req: Request, res: Response) => {
       WHERE delflag = 0 AND pay_state = 2
       ORDER BY created_at DESC
     `;
-    
+
     const latestDateResult = await sequelize.query(latestDateQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
-    
+
     const latestDate = latestDateResult[0] as any;
     const targetDate = latestDate?.latest_date || new Date().toISOString().split('T')[0];
-    
+
     const query = `
       SELECT 
         CASE 
@@ -1961,7 +2002,7 @@ router.get('/payment-stats', async (req: Request, res: Response) => {
 
     const result = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: { targetDate: targetDate }
+      replacements: { targetDate: targetDate },
     });
 
     res.json({
@@ -1970,15 +2011,15 @@ router.get('/payment-stats', async (req: Request, res: Response) => {
       summary: {
         date: targetDate,
         totalOrders: result.reduce((sum: number, item: any) => sum + item.order_count, 0),
-        totalAmount: result.reduce((sum: number, item: any) => sum + (item.total_amount || 0), 0)
-      }
+        totalAmount: result.reduce((sum: number, item: any) => sum + (item.total_amount || 0), 0),
+      },
     });
   } catch (error) {
     console.error('获取支付方式统计失败:', error);
     res.status(500).json({
       success: false,
       error: '获取支付方式统计失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });

@@ -26,6 +26,13 @@ import salesComparisonRoutes from './routes/salesComparison';
 import etlManagementRoutes from './routes/etlManagement';
 import aiInsightsRoutes from './routes/aiInsights';
 import aiAssistantRoutes from './routes/aiAssistant';
+import dashboardRoutes from './routes/dashboard';
+import customerBehaviorRoutes from './routes/customerBehavior';
+import intelligentPredictionRoutes from './routes/intelligentPrediction';
+import systemMonitoringRoutes from './routes/systemMonitoring';
+import dataQualityRoutes from './routes/dataQuality';
+import productProfileRoutes from './routes/productProfile';
+import aiDashboardRoutes from './routes/aiDashboard';
 
 // 加载环境变量 - 修复路径
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -47,10 +54,16 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 速率限制
+// 速率限制 - 调整为更宽松的限制
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15分钟
-  max: 100 // 限制每个IP 15分钟内最多100个请求
+  max: 1000, // 限制每个IP 15分钟内最多1000个请求 (从100增加到1000)
+  message: {
+    error: '请求过于频繁，请稍后再试',
+    retryAfter: '15分钟'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 app.use('/api/', limiter);
 
@@ -92,6 +105,13 @@ app.use('/api/sales-comparison', salesComparisonRoutes);
 app.use('/api/etl-management', etlManagementRoutes);
 app.use('/api/ai-insights', aiInsightsRoutes);
 app.use('/api/ai-assistant', aiAssistantRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/customer-behavior', customerBehaviorRoutes);
+app.use('/api/intelligent-prediction', intelligentPredictionRoutes);
+app.use('/api/system-monitoring', systemMonitoringRoutes);
+app.use('/api/data-quality', dataQualityRoutes);
+app.use('/api/product-profile', productProfileRoutes);
+app.use('/api/ai-dashboard', aiDashboardRoutes);
 
 // 错误处理
 app.use(notFoundHandler);

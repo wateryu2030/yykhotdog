@@ -92,6 +92,14 @@ const CustomerProfile: React.FC = () => {
   const [aiAnalysisVisible, setAiAnalysisVisible] = useState(false);
   const [aiAnalysisData, setAiAnalysisData] = useState<any>(null);
   const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
+  
+  // 新增AI功能状态
+  const [churnAlertVisible, setChurnAlertVisible] = useState(false);
+  const [churnAlertData, setChurnAlertData] = useState<any>(null);
+  const [churnAlertLoading, setChurnAlertLoading] = useState(false);
+  const [lifecyclePredictionVisible, setLifecyclePredictionVisible] = useState(false);
+  const [lifecycleData, setLifecycleData] = useState<any>(null);
+  const [lifecycleLoading, setLifecycleLoading] = useState(false);
 
   // 1. 新增订单详情和订单详细信息的弹窗状态
   const [orderDetailVisible, setOrderDetailVisible] = useState(false);
@@ -199,6 +207,75 @@ const CustomerProfile: React.FC = () => {
       message.error('获取AI分析失败');
     } finally {
       setAiAnalysisLoading(false);
+    }
+  };
+
+  // 10. 获取AI深度洞察
+  const fetchAIInsights = async () => {
+    setAiAnalysisLoading(true);
+    try {
+      const requestData = {
+        city: selectedCity || undefined,
+        shopId: selectedShopId || undefined,
+        startDate: dateRange ? dateRange[0] : undefined,
+        endDate: dateRange ? dateRange[1] : undefined
+      };
+
+      const response = await api.post('/customer-profile/ai-insights', requestData);
+      if (response.data.success) {
+        setAiAnalysisData(response.data.data);
+        setAiAnalysisVisible(true);
+        message.success('AI洞察生成成功');
+      } else {
+        message.error('获取AI洞察失败');
+      }
+    } catch (error) {
+      message.error('获取AI洞察失败');
+    } finally {
+      setAiAnalysisLoading(false);
+    }
+  };
+
+  // 11. 获取客户流失预警
+  const fetchChurnAlert = async () => {
+    setChurnAlertLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedCity) params.append('city', selectedCity);
+      if (selectedShopId) params.append('shopId', selectedShopId);
+      params.append('days', '30');
+
+      const response = await api.get(`/customer-profile/churn-alert?${params.toString()}`);
+      if (response.data.success) {
+        setChurnAlertData(response.data.data);
+        setChurnAlertVisible(true);
+        message.success('流失预警生成成功');
+      } else {
+        message.error('获取流失预警失败');
+      }
+    } catch (error) {
+      message.error('获取流失预警失败');
+    } finally {
+      setChurnAlertLoading(false);
+    }
+  };
+
+  // 12. 获取客户生命周期预测
+  const fetchLifecyclePrediction = async (customerId: string) => {
+    setLifecycleLoading(true);
+    try {
+      const response = await api.get(`/customer-profile/customer-lifecycle/${customerId}`);
+      if (response.data.success) {
+        setLifecycleData(response.data.data);
+        setLifecyclePredictionVisible(true);
+        message.success('生命周期预测生成成功');
+      } else {
+        message.error('获取生命周期预测失败');
+      }
+    } catch (error) {
+      message.error('获取生命周期预测失败');
+    } finally {
+      setLifecycleLoading(false);
     }
   };
 
@@ -447,20 +524,38 @@ const CustomerProfile: React.FC = () => {
           <span style={{ fontWeight: 'bold', fontSize: 28, color: '#fff' }}>客群画像</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <Button 
-            type="primary" 
-            icon={<RobotOutlined />}
-            onClick={() => setAiAnalysisVisible(true)}
-            style={{ marginRight: 16 }}
-          >
-            AI洞察
-          </Button>
-          <span style={{ fontSize: 16, color: '#fff', marginRight: 16 }}>{timeStr} {dateStr}</span>
-          <Badge count={1} size="small" style={{ marginRight: 16 }}>
+          <Space>
+            <Button 
+              type="primary" 
+              icon={<RobotOutlined />}
+              onClick={fetchAIInsights}
+              loading={aiAnalysisLoading}
+              style={{ marginRight: 8 }}
+            >
+              AI深度洞察
+            </Button>
+            <Button 
+              icon={<BellOutlined />}
+              onClick={fetchChurnAlert}
+              loading={churnAlertLoading}
+              style={{ marginRight: 8 }}
+            >
+              流失预警
+            </Button>
+            <Button 
+              icon={<TrophyOutlined />}
+              onClick={() => message.info('生命周期预测功能开发中...')}
+              style={{ marginRight: 8 }}
+            >
+              生命周期预测
+            </Button>
+          </Space>
+          <span style={{ fontSize: 16, color: '#fff', marginLeft: 16 }}>{timeStr} {dateStr}</span>
+          <Badge count={1} size="small" style={{ marginLeft: 16 }}>
             <BellOutlined style={{ fontSize: 20, color: '#fff' }} />
           </Badge>
-          <Avatar style={{ backgroundColor: '#87d068', marginRight: 8 }} icon={<UserOutlined />} />
-          <span style={{ color: '#fff' }}>管理员</span>
+          <Avatar style={{ backgroundColor: '#87d068', marginLeft: 16 }} icon={<UserOutlined />} />
+          <span style={{ color: '#fff', marginLeft: 8 }}>管理员</span>
         </div>
       </div>
 
@@ -1023,14 +1118,14 @@ const CustomerProfile: React.FC = () => {
                 <Col span={6}>
                   <Statistic
                     title="客户数量"
-                    value={aiAnalysisData.segment_data.customer_count}
+                    value={aiAnalysisData?.segment_data?.customer_count || 0}
                     suffix="人"
                   />
                 </Col>
                 <Col span={6}>
                   <Statistic
                     title="平均消费"
-                    value={aiAnalysisData.segment_data.avg_spend}
+                    value={aiAnalysisData?.segment_data?.avg_spend || 0}
                     precision={2}
                     prefix="¥"
                   />
@@ -1038,14 +1133,14 @@ const CustomerProfile: React.FC = () => {
                 <Col span={6}>
                   <Statistic
                     title="平均订单数"
-                    value={aiAnalysisData.segment_data.avg_orders}
+                    value={aiAnalysisData?.segment_data?.avg_orders || 0}
                     precision={1}
                   />
                 </Col>
                 <Col span={6}>
                   <Statistic
                     title="总消费"
-                    value={aiAnalysisData.segment_data.total_revenue}
+                    value={aiAnalysisData?.segment_data?.total_revenue || 0}
                     precision={0}
                     prefix="¥"
                   />
@@ -1058,20 +1153,20 @@ const CustomerProfile: React.FC = () => {
               <Col span={12}>
                 <Card title="客户特征分析" style={{ marginBottom: 16 }}>
                   <ul style={{ paddingLeft: 20 }}>
-                    {aiAnalysisData.ai_analysis.characteristics.map((item: string, index: number) => (
+                    {aiAnalysisData?.ai_analysis?.characteristics?.map((item: string, index: number) => (
                       <li key={index} style={{ marginBottom: 8 }}>{item}</li>
-                    ))}
+                    )) || []}
                   </ul>
                 </Card>
               </Col>
               <Col span={12}>
                 <Card title="营销建议" style={{ marginBottom: 16 }}>
                   <ul style={{ paddingLeft: 20 }}>
-                    {aiAnalysisData.ai_analysis.marketing_suggestions.map((item: string, index: number) => (
+                    {aiAnalysisData?.ai_analysis?.marketing_suggestions?.map((item: string, index: number) => (
                       <li key={index} style={{ marginBottom: 8 }}>
                         <Tag color="blue">{item}</Tag>
                       </li>
-                    ))}
+                    )) || []}
                   </ul>
                 </Card>
               </Col>
@@ -1081,32 +1176,32 @@ const CustomerProfile: React.FC = () => {
               <Col span={12}>
                 <Card title="风险因素" style={{ marginBottom: 16 }}>
                   <ul style={{ paddingLeft: 20 }}>
-                    {aiAnalysisData.ai_analysis.risk_factors.map((item: string, index: number) => (
+                    {aiAnalysisData?.ai_analysis?.risk_factors?.map((item: string, index: number) => (
                       <li key={index} style={{ marginBottom: 8 }}>
                         <Tag color="red">{item}</Tag>
                       </li>
-                    ))}
+                    )) || []}
                   </ul>
                 </Card>
               </Col>
               <Col span={12}>
                 <Card title="发展机会" style={{ marginBottom: 16 }}>
                   <ul style={{ paddingLeft: 20 }}>
-                    {aiAnalysisData.ai_analysis.opportunities.map((item: string, index: number) => (
+                    {aiAnalysisData?.ai_analysis?.opportunities?.map((item: string, index: number) => (
                       <li key={index} style={{ marginBottom: 8 }}>
                         <Tag color="green">{item}</Tag>
                       </li>
-                    ))}
+                    )) || []}
                   </ul>
                 </Card>
               </Col>
             </Row>
 
             {/* 产品偏好分析 */}
-            {aiAnalysisData.segment_data.product_preferences && aiAnalysisData.segment_data.product_preferences.length > 0 && (
+            {aiAnalysisData?.segment_data?.product_preferences && aiAnalysisData?.segment_data?.product_preferences.length > 0 && (
               <Card title="产品偏好分析">
                 <Table
-                  dataSource={aiAnalysisData.segment_data.product_preferences}
+                  dataSource={aiAnalysisData?.segment_data?.product_preferences || []}
                   rowKey="goods_name"
                   pagination={false}
                   size="small"
@@ -1141,6 +1236,326 @@ const CustomerProfile: React.FC = () => {
         ) : (
           <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
             暂无AI分析数据
+          </div>
+        )}
+      </Modal>
+
+      {/* AI深度洞察弹窗 */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <RobotOutlined style={{ marginRight: 8, color: '#1890ff' }} />
+            AI深度客户洞察
+          </div>
+        }
+        open={aiAnalysisVisible}
+        onCancel={() => setAiAnalysisVisible(false)}
+        width={1200}
+        footer={null}
+        styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
+      >
+        {aiAnalysisData ? (
+          <div>
+            {/* 客户健康度评分 */}
+            <Card title="客户健康度评分" style={{ marginBottom: 16 }}>
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Statistic
+                    title="健康度评分"
+                    value={aiAnalysisData?.insights?.healthScore || 0}
+                    suffix="/ 100"
+                    valueStyle={{ color: (aiAnalysisData?.insights?.healthScore || 0) > 70 ? '#3f8600' : '#cf1322' }}
+                  />
+                </Col>
+                <Col span={8}>
+                  <Statistic
+                    title="客户价值评估"
+                    value={aiAnalysisData?.insights?.customerValueAssessment || '评估中...'}
+                    valueStyle={{ fontSize: 14 }}
+                  />
+                </Col>
+                <Col span={8}>
+                  <Statistic
+                    title="流失风险预测"
+                    value={aiAnalysisData?.insights?.churnRiskPrediction || '分析中...'}
+                    valueStyle={{ fontSize: 14 }}
+                  />
+                </Col>
+              </Row>
+            </Card>
+
+            {/* 个性化营销建议 */}
+            {aiAnalysisData?.insights?.personalizedMarketingSuggestions && (
+              <Card title="个性化营销建议" style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {aiAnalysisData?.insights?.personalizedMarketingSuggestions?.map((suggestion: string, index: number) => (
+                    <Tag key={index} color="blue" style={{ marginBottom: 8 }}>
+                      {suggestion}
+                    </Tag>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* 优先行动 */}
+            {aiAnalysisData?.insights?.priorityActions && (
+              <Card title="优先行动建议" style={{ marginBottom: 16 }}>
+                {aiAnalysisData?.insights?.priorityActions?.map((action: any, index: number) => (
+                  <Card key={index} size="small" style={{ marginBottom: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <Tag color={action.priority === 'high' ? 'red' : action.priority === 'medium' ? 'orange' : 'green'}>
+                          {action.priority === 'high' ? '高优先级' : action.priority === 'medium' ? '中优先级' : '低优先级'}
+                        </Tag>
+                        <strong>{action.title}</strong>
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 8, color: '#666' }}>
+                      {action.description}
+                    </div>
+                    <div style={{ marginTop: 8, color: '#1890ff' }}>
+                      <strong>建议行动：</strong>{action.action}
+                    </div>
+                  </Card>
+                ))}
+              </Card>
+            )}
+
+            {/* 产品推荐策略 */}
+            {aiAnalysisData?.insights?.productRecommendationStrategy && (
+              <Card title="产品推荐策略" style={{ marginBottom: 16 }}>
+                <p style={{ margin: 0, lineHeight: 1.6 }}>
+                  {aiAnalysisData?.insights?.productRecommendationStrategy}
+                </p>
+              </Card>
+            )}
+
+            {/* 原始数据 */}
+            <Card title="分析数据详情" size="small">
+              <div style={{ fontSize: 12, color: '#666' }}>
+                <p><strong>生成时间：</strong>{aiAnalysisData?.generatedAt || '未知'}</p>
+                <p><strong>数据样本：</strong>{aiAnalysisData?.rawData?.segments?.length || 0} 个客户分群</p>
+                <p><strong>时间范围：</strong>24小时分布分析</p>
+              </div>
+            </Card>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+            暂无AI洞察数据
+          </div>
+        )}
+      </Modal>
+
+      {/* 客户流失预警弹窗 */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <BellOutlined style={{ marginRight: 8, color: '#ff4d4f' }} />
+            客户流失预警
+          </div>
+        }
+        open={churnAlertVisible}
+        onCancel={() => setChurnAlertVisible(false)}
+        width={1000}
+        footer={null}
+        styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
+      >
+        {churnAlertData ? (
+          <div>
+            {/* 风险统计 */}
+            <Card title="风险分布统计" style={{ marginBottom: 16 }}>
+              <Row gutter={16}>
+                <Col span={6}>
+                  <Statistic
+                    title="高风险客户"
+                    value={churnAlertData.riskStats?.high || 0}
+                    valueStyle={{ color: '#ff4d4f' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="中风险客户"
+                    value={churnAlertData.riskStats?.medium || 0}
+                    valueStyle={{ color: '#faad14' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="低风险客户"
+                    value={churnAlertData.riskStats?.low || 0}
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                </Col>
+                <Col span={6}>
+                  <Statistic
+                    title="总预警客户"
+                    value={churnAlertData.riskStats?.total || 0}
+                    valueStyle={{ color: '#1890ff' }}
+                  />
+                </Col>
+              </Row>
+            </Card>
+
+            {/* 预警客户列表 */}
+            <Card title="预警客户详情">
+              <Table
+                dataSource={churnAlertData.alerts || []}
+                rowKey="customer_id"
+                pagination={{ pageSize: 10 }}
+                size="small"
+                columns={[
+                  {
+                    title: '客户ID',
+                    dataIndex: 'customer_id',
+                    key: 'customer_id',
+                    render: (customerId: string) => (
+                      <Button 
+                        type="link" 
+                        onClick={() => fetchLifecyclePrediction(customerId)}
+                        loading={lifecycleLoading}
+                      >
+                        {customerId}
+                      </Button>
+                    )
+                  },
+                  {
+                    title: '最后订单时间',
+                    dataIndex: 'last_order_date',
+                    key: 'last_order_date',
+                    render: (date: string) => new Date(date).toLocaleString()
+                  },
+                  {
+                    title: '距今天数',
+                    dataIndex: 'days_since_last_order',
+                    key: 'days_since_last_order',
+                    render: (days: number) => (
+                      <Tag color={days > 30 ? 'red' : days > 15 ? 'orange' : 'green'}>
+                        {days} 天
+                      </Tag>
+                    )
+                  },
+                  {
+                    title: '风险等级',
+                    dataIndex: 'churn_risk_level',
+                    key: 'churn_risk_level',
+                    render: (level: string) => (
+                      <Tag color={level === '高风险' ? 'red' : level === '中风险' ? 'orange' : 'green'}>
+                        {level}
+                      </Tag>
+                    )
+                  },
+                  {
+                    title: '历史订单数',
+                    dataIndex: 'total_orders',
+                    key: 'total_orders'
+                  },
+                  {
+                    title: '历史消费',
+                    dataIndex: 'total_spent',
+                    key: 'total_spent',
+                    render: (value: number) => `¥${value?.toFixed(2) || '0.00'}`
+                  },
+                  {
+                    title: '平均订单价值',
+                    dataIndex: 'avg_order_value',
+                    key: 'avg_order_value',
+                    render: (value: number) => `¥${value?.toFixed(2) || '0.00'}`
+                  }
+                ]}
+              />
+            </Card>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+            暂无流失预警数据
+          </div>
+        )}
+      </Modal>
+
+      {/* 客户生命周期预测弹窗 */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <TrophyOutlined style={{ marginRight: 8, color: '#52c41a' }} />
+            客户生命周期预测
+          </div>
+        }
+        open={lifecyclePredictionVisible}
+        onCancel={() => setLifecyclePredictionVisible(false)}
+        width={800}
+        footer={null}
+      >
+        {lifecycleData ? (
+          <div>
+            <Card title="客户基本信息" style={{ marginBottom: 16 }}>
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Statistic title="客户ID" value={lifecycleData.customerId} />
+                </Col>
+                <Col span={8}>
+                  <Statistic title="历史订单数" value={lifecycleData.currentData?.order_count || 0} />
+                </Col>
+                <Col span={8}>
+                  <Statistic 
+                    title="历史消费" 
+                    value={lifecycleData.currentData?.total_spent || 0} 
+                    prefix="¥"
+                    precision={2}
+                  />
+                </Col>
+              </Row>
+            </Card>
+
+            <Card title="生命周期预测" style={{ marginBottom: 16 }}>
+              <Row gutter={16}>
+                <Col span={8}>
+                  <Statistic 
+                    title="当前阶段" 
+                    value={lifecycleData.prediction?.currentStage || '未知'} 
+                    valueStyle={{ color: '#1890ff' }}
+                  />
+                </Col>
+                <Col span={8}>
+                  <Statistic 
+                    title="下一阶段" 
+                    value={lifecycleData.prediction?.nextStage || '未知'} 
+                    valueStyle={{ color: '#52c41a' }}
+                  />
+                </Col>
+                <Col span={8}>
+                  <Statistic 
+                    title="预测持续天数" 
+                    value={lifecycleData.prediction?.predictedDuration || 0} 
+                    suffix="天"
+                  />
+                </Col>
+              </Row>
+            </Card>
+
+            <Card title="风险评估">
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Statistic 
+                    title="流失风险" 
+                    value={lifecycleData.prediction?.churnRisk || 0} 
+                    suffix="/ 100"
+                    valueStyle={{ color: lifecycleData.prediction?.churnRisk > 70 ? '#ff4d4f' : '#52c41a' }}
+                  />
+                </Col>
+                <Col span={12}>
+                  <Statistic 
+                    title="增长潜力" 
+                    value={lifecycleData.prediction?.growthPotential || 0} 
+                    suffix="/ 100"
+                    valueStyle={{ color: lifecycleData.prediction?.growthPotential > 70 ? '#52c41a' : '#faad14' }}
+                  />
+                </Col>
+              </Row>
+            </Card>
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#999' }}>
+            暂无生命周期预测数据
           </div>
         )}
       </Modal>

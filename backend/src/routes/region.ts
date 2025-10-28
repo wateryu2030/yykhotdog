@@ -19,7 +19,7 @@ router.get('/cascade', async (req: Request, res: Response) => {
     `;
 
     const regions = await sequelize.query(query, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     // 构建级联数据结构
@@ -31,7 +31,7 @@ router.get('/cascade', async (req: Request, res: Response) => {
       regions.forEach(region => {
         regionMap.set(region.value, {
           ...region,
-          children: []
+          children: [],
         });
       });
 
@@ -54,14 +54,14 @@ router.get('/cascade', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: cascadeData
+      data: cascadeData,
     });
   } catch (error) {
     console.error('获取地区级联数据失败:', error);
     res.status(500).json({
       success: false,
       error: '获取地区级联数据失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -81,7 +81,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
     `;
 
     const regionStats = await sequelize.query(regionQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     // 获取实际运营统计
@@ -95,7 +95,7 @@ router.get('/statistics', async (req: Request, res: Response) => {
     `;
 
     const operatingStats = await sequelize.query(operatingQuery, {
-      type: QueryTypes.SELECT
+      type: QueryTypes.SELECT,
     });
 
     // 合并数据
@@ -106,20 +106,20 @@ router.get('/statistics', async (req: Request, res: Response) => {
         level: 'operating',
         operating_cities: operatingData?.operating_cities || 0,
         operating_provinces: operatingData?.operating_provinces || 0,
-        operating_stores: operatingData?.operating_stores || 0
-      }
+        operating_stores: operatingData?.operating_stores || 0,
+      },
     ];
 
     res.json({
       success: true,
-      data: result
+      data: result,
     });
   } catch (error) {
     console.error('获取地区统计信息失败:', error);
     res.status(500).json({
       success: false,
       error: '获取地区统计信息失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });

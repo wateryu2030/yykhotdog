@@ -4,7 +4,7 @@ MSSQL数据库连接和操作库
 """
 import os
 import pandas as pd
-import pyodbc
+import pymssql
 import logging
 from typing import Optional, Dict, Any
 from contextlib import contextmanager
@@ -22,25 +22,19 @@ class MSSQLConnector:
         self.user = user or os.getenv('MSSQL_USER', 'hotdog')
         self.password = password or os.getenv('MSSQL_PASS', 'Zhkj@62102218')
     
-    def get_connection_string(self, database: str = None) -> str:
-        """生成连接字符串"""
-        conn_str = (
-            "DRIVER={ODBC Driver 18 for SQL Server};"
-            f"SERVER={self.host},{self.port};"
-            f"DATABASE={database};"
-            f"UID={self.user};"
-            f"PWD={self.password};"
-            "TrustServerCertificate=yes;"
-        )
-        return conn_str
-    
     @contextmanager
     def get_conn(self, database: str = None):
         """获取数据库连接（上下文管理器）"""
         conn = None
         try:
-            conn_str = self.get_connection_string(database)
-            conn = pyodbc.connect(conn_str)
+            conn = pymssql.connect(
+                server=self.host,
+                port=int(self.port),
+                user=self.user,
+                password=self.password,
+                database=database,
+                as_dict=False
+            )
             logger.info(f"✅ 成功连接到数据库: {database}")
             yield conn
         except Exception as e:
@@ -78,9 +72,9 @@ def to_sql(df: pd.DataFrame, table: str, database: str, if_exists: str = 'append
         with get_conn(database) as conn:
             cursor = conn.cursor()
             
-            # 构建插入语句
+            # 构建插入语句 - pymssql使用%s占位符
             cols = ",".join([f"[{col}]" for col in df.columns])
-            placeholders = ",".join(["?"] * len(df.columns))
+            placeholders = ",".join(["%s"] * len(df.columns))
             insert_sql = f"INSERT INTO [{table}] ({cols}) VALUES ({placeholders})"
             
             # 批量插入

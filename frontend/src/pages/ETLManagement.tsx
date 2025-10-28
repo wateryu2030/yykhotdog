@@ -8,11 +8,8 @@ import {
   Row,
   Col,
   Statistic,
-  List,
   Typography,
   Space,
-  Divider,
-  Spin,
   message
 } from 'antd';
 import {
@@ -45,7 +42,7 @@ interface ETLStep {
 interface ETLStatus {
   success: boolean;
   message: string;
-  steps: ETLStep[];
+  steps?: ETLStep[];
   etlPath?: string;
 }
 
@@ -58,7 +55,7 @@ const ETLManagement: React.FC = () => {
   // 获取ETL状态
   const fetchETLStatus = async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/etl/status');
+      const response = await fetch('http://localhost:3001/api/etl-management/status');
       const data = await response.json();
       setEtlStatus(data);
     } catch (error) {
@@ -73,7 +70,7 @@ const ETLManagement: React.FC = () => {
     setLoading(true);
     
     try {
-      const response = await fetch(`http://localhost:3001/api/etl/execute/${stepId}`, {
+      const response = await fetch(`http://localhost:3001/api/etl-management/execute/${stepId}`, {
         method: 'POST',
       });
       const data = await response.json();
@@ -102,7 +99,7 @@ const ETLManagement: React.FC = () => {
     message.info('开始执行完整ETL流程...');
     
     try {
-      const response = await fetch('http://localhost:3001/api/etl/execute-all', {
+      const response = await fetch('http://localhost:3001/api/etl-management/execute-all', {
         method: 'POST',
       });
       const data = await response.json();
@@ -214,7 +211,7 @@ const ETLManagement: React.FC = () => {
             <Col span={6}>
               <Statistic
                 title="已完成"
-                value={etlStatus.steps.filter(s => s.status === 'completed').length}
+                value={etlStatus.steps?.filter(s => s.status === 'completed').length || 0}
                 valueStyle={{ color: '#52c41a' }}
                 prefix={<CheckCircleOutlined />}
               />
@@ -222,7 +219,7 @@ const ETLManagement: React.FC = () => {
             <Col span={6}>
               <Statistic
                 title="就绪"
-                value={etlStatus.steps.filter(s => s.status === 'ready').length}
+                value={etlStatus.steps?.filter(s => s.status === 'ready').length || 0}
                 valueStyle={{ color: '#faad14' }}
                 prefix={<ClockCircleOutlined />}
               />
@@ -230,7 +227,7 @@ const ETLManagement: React.FC = () => {
             <Col span={6}>
               <Statistic
                 title="错误"
-                value={etlStatus.steps.filter(s => s.status === 'error').length}
+                value={etlStatus.steps?.filter(s => s.status === 'error').length || 0}
                 valueStyle={{ color: '#ff4d4f' }}
                 prefix={<CloseCircleOutlined />}
               />
@@ -238,7 +235,7 @@ const ETLManagement: React.FC = () => {
             <Col span={6}>
               <Statistic
                 title="缺失"
-                value={etlStatus.steps.filter(s => s.status === 'missing').length}
+                value={etlStatus.steps?.filter(s => s.status === 'missing').length || 0}
                 valueStyle={{ color: '#8c8c8c' }}
                 prefix={<CloseCircleOutlined />}
               />
@@ -249,7 +246,7 @@ const ETLManagement: React.FC = () => {
 
       {/* ETL步骤列表 */}
       <Row gutter={[16, 16]}>
-        {etlStatus?.steps.map((step) => {
+        {etlStatus?.steps && etlStatus.steps.map((step) => {
           const Icon = getStepIcon(step.id);
           const isExecuting = executingStep === step.id;
           

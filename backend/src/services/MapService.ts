@@ -73,7 +73,7 @@ export class AmapService {
         `${MAP_CONFIG.AMAP.BASE_URL}/geocode/geo?key=${MAP_CONFIG.AMAP.WEB_API_KEY}&address=${encodeURIComponent(address)}&output=json`
       );
       const data: any = response.data;
-      
+
       if (data.status === '1' && data.geocodes && data.geocodes.length > 0) {
         const location = data.geocodes[0].location.split(',');
         return {
@@ -101,7 +101,7 @@ export class AmapService {
         `${MAP_CONFIG.AMAP.BASE_URL}/weather/weatherInfo?key=${MAP_CONFIG.AMAP.WEB_API_KEY}&city=${encodeURIComponent(city)}&extensions=all&output=json`
       );
       const data: any = response.data;
-      
+
       if (data.status === '1') {
         return {
           success: true,
@@ -118,13 +118,18 @@ export class AmapService {
   }
 
   // 周边搜索
-  static async searchNearby(longitude: number, latitude: number, keywords: string, radius: number = 3000): Promise<any> {
+  static async searchNearby(
+    longitude: number,
+    latitude: number,
+    keywords: string,
+    radius: number = 3000
+  ): Promise<any> {
     try {
       const response = await axios.get(
         `${MAP_CONFIG.AMAP.BASE_URL}/place/around?key=${MAP_CONFIG.AMAP.WEB_API_KEY}&location=${longitude},${latitude}&keywords=${encodeURIComponent(keywords)}&radius=${radius}&output=json`
       );
       const data: any = response.data;
-      
+
       if (data.status === '1') {
         return {
           success: true,
@@ -141,13 +146,17 @@ export class AmapService {
   }
 
   // 路径规划
-  static async routePlanning(origin: string, destination: string, strategy: string = '0'): Promise<any> {
+  static async routePlanning(
+    origin: string,
+    destination: string,
+    strategy: string = '0'
+  ): Promise<any> {
     try {
       const response = await axios.get(
         `${MAP_CONFIG.AMAP.BASE_URL}/direction/walking?key=${MAP_CONFIG.AMAP.WEB_API_KEY}&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&strategy=${strategy}&output=json`
       );
       const data: any = response.data;
-      
+
       if (data.status === '1') {
         return {
           success: true,
@@ -169,7 +178,7 @@ export class AmapService {
         `${MAP_CONFIG.AMAP.BASE_URL}/config/district?key=${MAP_CONFIG.AMAP.WEB_API_KEY}&keywords=${encodeURIComponent(cityName)}&subdistrict=0&output=json`
       );
       const data: any = response.data;
-      
+
       if (data.status === '1' && data.districts && data.districts.length > 0) {
         return {
           success: true,
@@ -192,7 +201,7 @@ export class MapServiceManager {
     try {
       const [geocodeResult, weatherResult] = await Promise.allSettled([
         AmapService.reverseGeocode(longitude, latitude),
-        AmapService.getWeather('北京') // 默认查询北京天气
+        AmapService.getWeather('北京'), // 默认查询北京天气
       ]);
 
       const result: any = {
@@ -229,7 +238,7 @@ export class MapServiceManager {
     try {
       // 地理编码获取坐标
       const geocodeResult = await AmapService.geocode(location);
-      
+
       if (!geocodeResult.success) {
         throw new Error('无法获取位置坐标');
       }
@@ -274,11 +283,16 @@ export class MapServiceManager {
       }
 
       // 人流量分析
-      if (analysis.nearby.malls?.pois || analysis.nearby.schools?.pois || analysis.nearby.subways?.pois) {
-        const totalPOIs = (analysis.nearby.malls?.pois?.length || 0) + 
-                         (analysis.nearby.schools?.pois?.length || 0) + 
-                         (analysis.nearby.subways?.pois?.length || 0);
-        
+      if (
+        analysis.nearby.malls?.pois ||
+        analysis.nearby.schools?.pois ||
+        analysis.nearby.subways?.pois
+      ) {
+        const totalPOIs =
+          (analysis.nearby.malls?.pois?.length || 0) +
+          (analysis.nearby.schools?.pois?.length || 0) +
+          (analysis.nearby.subways?.pois?.length || 0);
+
         if (totalPOIs > 5) {
           score += 30;
           recommendations.push('周边人流量充足，适合开设热狗店');
@@ -300,4 +314,4 @@ export class MapServiceManager {
       throw error;
     }
   }
-} 
+}

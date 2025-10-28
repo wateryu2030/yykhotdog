@@ -22,8 +22,8 @@ export default class OptimizedCustomerProfileService {
     database: process.env.CARGO_DB_NAME || 'cyrg2025',
     options: {
       encrypt: false,
-      trustServerCertificate: true
-    }
+      trustServerCertificate: true,
+    },
   };
 
   private hotdogConfig = {
@@ -34,8 +34,8 @@ export default class OptimizedCustomerProfileService {
     database: process.env.DB_NAME || 'hotdog2030',
     options: {
       encrypt: false,
-      trustServerCertificate: true
-    }
+      trustServerCertificate: true,
+    },
   };
 
   private syncTasks: Map<string, SyncProgress> = new Map();
@@ -46,7 +46,7 @@ export default class OptimizedCustomerProfileService {
    */
   async startAsyncSync(): Promise<string> {
     const taskId = `sync_${Date.now()}`;
-    
+
     const progress: SyncProgress = {
       taskId,
       status: 'pending',
@@ -54,11 +54,11 @@ export default class OptimizedCustomerProfileService {
       currentStep: '初始化',
       totalRecords: 0,
       processedRecords: 0,
-      startTime: new Date()
+      startTime: new Date(),
     };
 
     this.syncTasks.set(taskId, progress);
-    
+
     // 异步执行同步任务
     this.executeSyncTask(taskId).catch(error => {
       logger.error(`同步任务失败: ${taskId}`, error);
@@ -87,7 +87,7 @@ export default class OptimizedCustomerProfileService {
 
       const cyrg2025Pool = await sql.connect(this.cyrg2025Config);
       const hotdogPool = await sql.connect(this.hotdogConfig);
-      
+
       // 显式切换到hotdog2030数据库
       await hotdogPool.request().query('USE hotdog2030');
       logger.info('切换到hotdog2030数据库');
@@ -95,7 +95,7 @@ export default class OptimizedCustomerProfileService {
       // 获取总记录数
       progress.currentStep = '统计记录数';
       progress.progress = 10;
-      
+
       const countResult = await cyrg2025Pool.request().query(`
         SELECT COUNT(DISTINCT o.openId) as total_customers
         FROM cyrg2025.dbo.Orders o
@@ -103,7 +103,7 @@ export default class OptimizedCustomerProfileService {
           AND (o.Delflag = 0 OR o.Delflag IS NULL)
           AND o.recordTime IS NOT NULL
       `);
-      
+
       progress.totalRecords = countResult.recordset[0].total_customers;
       logger.info(`总客户数: ${progress.totalRecords}`);
 
@@ -147,13 +147,14 @@ export default class OptimizedCustomerProfileService {
 
         // 批量插入数据
         await this.batchInsertCustomerProfiles(hotdogPool, batchResult.recordset);
-        
+
         offset += this.BATCH_SIZE;
         progress.processedRecords = Math.min(offset, progress.totalRecords);
-        progress.progress = 15 + Math.floor((progress.processedRecords / progress.totalRecords) * 70);
+        progress.progress =
+          15 + Math.floor((progress.processedRecords / progress.totalRecords) * 70);
 
         logger.info(`已处理 ${progress.processedRecords}/${progress.totalRecords} 条记录`);
-        
+
         // 避免阻塞太久，给其他请求机会
         await new Promise(resolve => setTimeout(resolve, 100));
       }
@@ -168,7 +169,6 @@ export default class OptimizedCustomerProfileService {
       await hotdogPool.close();
 
       logger.info(`同步任务完成: ${taskId}`);
-
     } catch (error) {
       logger.error(`同步任务失败: ${taskId}`, error);
       progress.status = 'failed';
@@ -181,11 +181,14 @@ export default class OptimizedCustomerProfileService {
   /**
    * 批量插入客户画像数据
    */
-  private async batchInsertCustomerProfiles(pool: sql.ConnectionPool, records: any[]): Promise<void> {
+  private async batchInsertCustomerProfiles(
+    pool: sql.ConnectionPool,
+    records: any[]
+  ): Promise<void> {
     if (records.length === 0) return;
 
     const batchTime = new Date().toISOString();
-    
+
     // 使用MERGE语句进行UPSERT操作
     for (const record of records) {
       const customerProfile = {
@@ -202,12 +205,24 @@ export default class OptimizedCustomerProfileService {
         total_orders: record.total_orders,
         total_spend: record.total_spend || 0,
         avg_order_amount: record.avg_order_amount || 0,
-        order_frequency: this.calculateOrderFrequency(record.first_order_date, record.last_order_date, record.total_orders),
+        order_frequency: this.calculateOrderFrequency(
+          record.first_order_date,
+          record.last_order_date,
+          record.total_orders
+        ),
         customer_lifetime_value: record.total_spend || 0,
         age_group: this.calculateAgeGroup(record.gender),
-        rfm_score: this.calculateRFMScore(record.last_order_date, record.total_orders, record.total_spend),
-        customer_segment: this.calculateCustomerSegment(record.last_order_date, record.total_orders, record.total_spend),
-        batch_time: batchTime
+        rfm_score: this.calculateRFMScore(
+          record.last_order_date,
+          record.total_orders,
+          record.total_spend
+        ),
+        customer_segment: this.calculateCustomerSegment(
+          record.last_order_date,
+          record.total_orders,
+          record.total_spend
+        ),
+        batch_time: batchTime,
       };
 
       const mergeSQL = `
@@ -304,44 +319,56 @@ export default class OptimizedCustomerProfileService {
   private calculateRFMScore(lastOrderDate: Date, frequency: number, monetary: number): string {
     const now = new Date();
     const recency = Math.floor((now.getTime() - lastOrderDate.getTime()) / (1000 * 60 * 60 * 24));
-    
-    let r_score = 1, f_score = 1, m_score = 1;
-    
+
+    let r_score = 1,
+      f_score = 1,
+      m_score = 1;
+
     if (recency <= 30) r_score = 5;
     else if (recency <= 60) r_score = 4;
     else if (recency <= 90) r_score = 3;
     else if (recency <= 180) r_score = 2;
-    
+
     if (frequency >= 10) f_score = 5;
     else if (frequency >= 5) f_score = 4;
     else if (frequency >= 3) f_score = 3;
     else if (frequency >= 2) f_score = 2;
-    
+
     if (monetary >= 1000) m_score = 5;
     else if (monetary >= 500) m_score = 4;
     else if (monetary >= 200) m_score = 3;
     else if (monetary >= 100) m_score = 2;
-    
+
     return `${r_score}${f_score}${m_score}`;
   }
 
-  private calculateCustomerSegment(lastOrderDate: Date, frequency: number, monetary: number): string {
+  private calculateCustomerSegment(
+    lastOrderDate: Date,
+    frequency: number,
+    monetary: number
+  ): string {
     const now = new Date();
     const recency = Math.floor((now.getTime() - lastOrderDate.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     if (recency <= 30 && frequency >= 5 && monetary >= 1000) return '重要价值客户';
     if (recency <= 90 && frequency >= 3 && monetary >= 500) return '重要发展客户';
     if (recency <= 180 && frequency >= 2 && monetary >= 200) return '重要挽留客户';
     return '低价值客户';
   }
 
-  private calculateOrderFrequency(firstOrderDate: Date, lastOrderDate: Date, totalOrders: number): number {
+  private calculateOrderFrequency(
+    firstOrderDate: Date,
+    lastOrderDate: Date,
+    totalOrders: number
+  ): number {
     if (!firstOrderDate || !lastOrderDate || totalOrders <= 1) return 0;
-    const days = Math.floor((lastOrderDate.getTime() - firstOrderDate.getTime()) / (1000 * 60 * 60 * 24));
+    const days = Math.floor(
+      (lastOrderDate.getTime() - firstOrderDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
     return days > 0 ? totalOrders / days : 0;
   }
 
   private calculateAgeGroup(gender: number): string {
     return '未知';
   }
-} 
+}

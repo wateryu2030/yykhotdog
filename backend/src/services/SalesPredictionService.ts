@@ -34,8 +34,12 @@ export class SalesPredictionService {
       `;
 
       const results = await sequelize.query(query, {
-        replacements: { storeId, startDate: startDate.toISOString(), endDate: endDate.toISOString() },
-        type: QueryTypes.SELECT
+        replacements: {
+          storeId,
+          startDate: startDate.toISOString(),
+          endDate: endDate.toISOString(),
+        },
+        type: QueryTypes.SELECT,
       });
 
       return results;
@@ -50,10 +54,10 @@ export class SalesPredictionService {
     const factorWeights = {
       weekday: {},
       hour: {},
-      weather: { '晴天': 1.0, '阴天': 0.9, '雨天': 0.8 },
-      temperature: { 'high': 1.1, 'normal': 1.0, 'low': 0.9 },
+      weather: { 晴天: 1.0, 阴天: 0.9, 雨天: 0.8 },
+      temperature: { high: 1.1, normal: 1.0, low: 0.9 },
       isHoliday: { true: 1.2, false: 1.0 },
-      isSchoolDay: { true: 1.1, false: 1.0 }
+      isSchoolDay: { true: 1.1, false: 1.0 },
     };
 
     // 分析星期几的影响
@@ -69,13 +73,14 @@ export class SalesPredictionService {
     });
 
     // 计算星期几权重
-    const avgSales = historicalData.reduce((sum, record) => sum + record.totalSales, 0) / historicalData.length;
+    const avgSales =
+      historicalData.reduce((sum, record) => sum + record.totalSales, 0) / historicalData.length;
     Object.keys(weekdayStats).forEach(weekday => {
       const stats = weekdayStats[weekday];
       const avgWeekdaySales = stats.totalSales / stats.count;
       factorWeights.weekday[weekday] = {
         weight: avgWeekdaySales / avgSales,
-        impact: (avgWeekdaySales - avgSales) / avgSales
+        impact: (avgWeekdaySales - avgSales) / avgSales,
       };
     });
 
@@ -97,7 +102,7 @@ export class SalesPredictionService {
       const avgHourSales = stats.totalSales / stats.count;
       factorWeights.hour[hour] = {
         weight: avgHourSales / avgSales,
-        impact: (avgHourSales - avgSales) / avgSales
+        impact: (avgHourSales - avgSales) / avgSales,
       };
     });
 
@@ -105,14 +110,20 @@ export class SalesPredictionService {
   }
 
   // 生成销售预测
-  private async generatePredictions(storeId: number, startDate: string, endDate: string, factorWeights: any, historicalStats?: any) {
+  private async generatePredictions(
+    storeId: number,
+    startDate: string,
+    endDate: string,
+    factorWeights: any,
+    historicalStats?: any
+  ) {
     const predictions = {};
     const currentDate = new Date(startDate);
     const end = new Date(endDate);
 
     // 基于历史数据计算基础值
-    let baseSales = 80;  // 进一步降低基础销售额
-    let baseOrders = 4;  // 进一步降低基础订单数
+    let baseSales = 80; // 进一步降低基础销售额
+    let baseOrders = 4; // 进一步降低基础订单数
     let maxHistoricalSales = 0;
     let avgHistoricalSales = 0;
     let minHistoricalSales = 0;
@@ -126,7 +137,7 @@ export class SalesPredictionService {
       baseOrders = historicalStats.avgHourlyOrders || 4;
       maxHistoricalSales = historicalStats.maxHourlySales || 0;
       avgHistoricalSales = historicalStats.avgHourlySales || 0;
-      
+
       // 计算历史数据的总和和数量
       Object.values(historicalStats.hourlyStats || {}).forEach((hourData: any) => {
         if (hourData.avgSales > 0) {
@@ -135,16 +146,20 @@ export class SalesPredictionService {
           dataPoints++;
         }
       });
-      
+
       // 计算真实的历史平均值
       if (dataPoints > 0) {
         avgHistoricalSales = totalHistoricalSales / dataPoints;
-        minHistoricalSales = Math.min(...Object.values(historicalStats.hourlyStats || {}).map((s: any) => s.avgSales || avgHistoricalSales));
+        minHistoricalSales = Math.min(
+          ...Object.values(historicalStats.hourlyStats || {}).map(
+            (s: any) => s.avgSales || avgHistoricalSales
+          )
+        );
       }
-      
+
       // 限制基础值在合理范围内
       baseSales = Math.max(20, Math.min(baseSales, 150)); // 20-150元/小时
-      baseOrders = Math.max(1, Math.min(baseOrders, 10));  // 1-10单/小时
+      baseOrders = Math.max(1, Math.min(baseOrders, 10)); // 1-10单/小时
     }
 
     while (currentDate <= end) {
@@ -193,7 +208,7 @@ export class SalesPredictionService {
         if (maxHistoricalSales > 0 && avgHistoricalSales > 0) {
           const maxAllowedSales = Math.min(maxHistoricalSales * 1.1, avgHistoricalSales * 1.5); // 更保守的上限
           const minAllowedSales = Math.max(minHistoricalSales * 0.9, avgHistoricalSales * 0.7); // 更保守的下限
-          
+
           if (predictedSales > maxAllowedSales) {
             predictedSales = Math.round(maxAllowedSales * 100) / 100;
           }
@@ -209,7 +224,7 @@ export class SalesPredictionService {
         // 计算置信度：基于历史数据的丰富程度
         let confidence = 0.75; // 基础置信度
         if (dataPoints > 30) confidence = 0.85;
-        if (dataPoints > 60) confidence = 0.90;
+        if (dataPoints > 60) confidence = 0.9;
         if (dataPoints > 90) confidence = 0.95;
 
         predictions[dateKey].push({
@@ -225,8 +240,8 @@ export class SalesPredictionService {
             weather: '晴天',
             temperature: 22,
             historicalDataPoints: dataPoints,
-            avgHistoricalSales: Math.round(avgHistoricalSales * 100) / 100
-          }
+            avgHistoricalSales: Math.round(avgHistoricalSales * 100) / 100,
+          },
         });
       }
 
@@ -239,12 +254,34 @@ export class SalesPredictionService {
   // 判断是否为节假日
   private isHoliday(date: Date): boolean {
     const holidays = [
-      '2024-01-01', '2024-02-10', '2024-02-11', '2024-02-12', '2024-02-13', '2024-02-14', '2024-02-15', '2024-02-16', '2024-02-17',
-      '2024-04-04', '2024-04-05', '2024-04-06',
-      '2024-05-01', '2024-05-02', '2024-05-03', '2024-05-04', '2024-05-05',
+      '2024-01-01',
+      '2024-02-10',
+      '2024-02-11',
+      '2024-02-12',
+      '2024-02-13',
+      '2024-02-14',
+      '2024-02-15',
+      '2024-02-16',
+      '2024-02-17',
+      '2024-04-04',
+      '2024-04-05',
+      '2024-04-06',
+      '2024-05-01',
+      '2024-05-02',
+      '2024-05-03',
+      '2024-05-04',
+      '2024-05-05',
       '2024-06-10',
-      '2024-09-15', '2024-09-16', '2024-09-17',
-      '2024-10-01', '2024-10-02', '2024-10-03', '2024-10-04', '2024-10-05', '2024-10-06', '2024-10-07'
+      '2024-09-15',
+      '2024-09-16',
+      '2024-09-17',
+      '2024-10-01',
+      '2024-10-02',
+      '2024-10-03',
+      '2024-10-04',
+      '2024-10-05',
+      '2024-10-06',
+      '2024-10-07',
     ];
     return holidays.includes(date.toISOString().split('T')[0]);
   }
@@ -258,12 +295,12 @@ export class SalesPredictionService {
   // 计算历史统计数据
   private calculateHistoricalStats(historicalData: any[]) {
     const hourlyStats = {};
-    
+
     // 初始化24小时的统计数据
     for (let hour = 8; hour <= 22; hour++) {
       hourlyStats[hour] = {
         sales: [],
-        orders: []
+        orders: [],
       };
     }
 
@@ -296,7 +333,7 @@ export class SalesPredictionService {
           avgOrders: Math.round(avgOrders * 100) / 100,
           maxSales,
           maxOrders,
-          count: hourData.sales.length
+          count: hourData.sales.length,
         };
 
         totalSales += avgSales;
@@ -312,7 +349,7 @@ export class SalesPredictionService {
       avgHourlyOrders: Math.round((totalOrders / 15) * 100) / 100,
       maxHourlySales,
       maxHourlyOrders,
-      totalDays: Math.max(...Object.values(stats).map((s: any) => s.count))
+      totalDays: Math.max(...Object.values(stats).map((s: any) => s.count)),
     };
   }
 
@@ -322,7 +359,7 @@ export class SalesPredictionService {
       logger.info(`开始分析门店 ${storeId} 的历史销售数据，天数: ${days}`);
 
       const historicalData = await this.getHistoricalSalesData(storeId, days);
-      
+
       if (historicalData.length === 0) {
         throw new Error('没有找到历史销售数据');
       }
@@ -333,7 +370,13 @@ export class SalesPredictionService {
       const startDate = new Date().toISOString().split('T')[0];
       const endDate = new Date();
       endDate.setDate(endDate.getDate() + 7);
-      const predictions = await this.generatePredictions(storeId, startDate, endDate.toISOString().split('T')[0], factorWeights, historicalStats);
+      const predictions = await this.generatePredictions(
+        storeId,
+        startDate,
+        endDate.toISOString().split('T')[0],
+        factorWeights,
+        historicalStats
+      );
 
       await this.savePredictions(storeId, predictions);
       await this.saveFactorWeights(storeId, factorWeights);
@@ -345,7 +388,7 @@ export class SalesPredictionService {
         factorWeights,
         historicalStats,
         predictions,
-        message: '历史数据分析完成，预测已生成'
+        message: '历史数据分析完成，预测已生成',
       };
     } catch (error) {
       logger.error('分析历史销售数据失败:', error);
@@ -356,32 +399,38 @@ export class SalesPredictionService {
   // 保存预测结果到hotdog2030数据库
   private async savePredictions(storeId: number, predictions: any) {
     try {
-      await sequelize.query(`
+      await sequelize.query(
+        `
         DELETE FROM hotdog2030.dbo.sales_predictions 
         WHERE storeId = :storeId
-      `, {
-        replacements: { storeId },
-        type: QueryTypes.DELETE
-      });
+      `,
+        {
+          replacements: { storeId },
+          type: QueryTypes.DELETE,
+        }
+      );
 
       for (const [date, dayPredictions] of Object.entries(predictions)) {
         for (const prediction of dayPredictions as any[]) {
-          await sequelize.query(`
+          await sequelize.query(
+            `
             INSERT INTO hotdog2030.dbo.sales_predictions 
             (storeId, date, hour, predictedSales, predictedOrders, confidence, factors)
             VALUES (:storeId, :date, :hour, :predictedSales, :predictedOrders, :confidence, :factors)
-          `, {
-            replacements: {
-              storeId,
-              date,
-              hour: prediction.hour,
-              predictedSales: prediction.predictedSales,
-              predictedOrders: prediction.predictedOrders,
-              confidence: prediction.confidence,
-              factors: JSON.stringify(prediction.factors)
-            },
-            type: QueryTypes.INSERT
-          });
+          `,
+            {
+              replacements: {
+                storeId,
+                date,
+                hour: prediction.hour,
+                predictedSales: prediction.predictedSales,
+                predictedOrders: prediction.predictedOrders,
+                confidence: prediction.confidence,
+                factors: JSON.stringify(prediction.factors),
+              },
+              type: QueryTypes.INSERT,
+            }
+          );
         }
       }
 
@@ -395,44 +444,53 @@ export class SalesPredictionService {
   // 保存影响因素权重到hotdog2030数据库
   private async saveFactorWeights(storeId: number, factorWeights: any) {
     try {
-      await sequelize.query(`
+      await sequelize.query(
+        `
         DELETE FROM hotdog2030.dbo.factor_weights 
         WHERE storeId = :storeId
-      `, {
-        replacements: { storeId },
-        type: QueryTypes.DELETE
-      });
+      `,
+        {
+          replacements: { storeId },
+          type: QueryTypes.DELETE,
+        }
+      );
 
       for (const [weekday, data] of Object.entries(factorWeights.weekday)) {
-        await sequelize.query(`
+        await sequelize.query(
+          `
           INSERT INTO hotdog2030.dbo.factor_weights 
           (storeId, factorType, factorValue, weight, impact)
           VALUES (:storeId, 'weekday', :factorValue, :weight, :impact)
-        `, {
-          replacements: {
-            storeId,
-            factorValue: weekday,
-            weight: (data as any).weight,
-            impact: (data as any).impact
-          },
-          type: QueryTypes.INSERT
-        });
+        `,
+          {
+            replacements: {
+              storeId,
+              factorValue: weekday,
+              weight: (data as any).weight,
+              impact: (data as any).impact,
+            },
+            type: QueryTypes.INSERT,
+          }
+        );
       }
 
       for (const [hour, data] of Object.entries(factorWeights.hour)) {
-        await sequelize.query(`
+        await sequelize.query(
+          `
           INSERT INTO hotdog2030.dbo.factor_weights 
           (storeId, factorType, factorValue, weight, impact)
           VALUES (:storeId, 'hour', :factorValue, :weight, :impact)
-        `, {
-          replacements: {
-            storeId,
-            factorValue: hour,
-            weight: (data as any).weight,
-            impact: (data as any).impact
-          },
-          type: QueryTypes.INSERT
-        });
+        `,
+          {
+            replacements: {
+              storeId,
+              factorValue: hour,
+              weight: (data as any).weight,
+              impact: (data as any).impact,
+            },
+            type: QueryTypes.INSERT,
+          }
+        );
       }
 
       logger.info(`影响因素权重已保存到数据库，门店: ${storeId}`);
@@ -445,8 +503,10 @@ export class SalesPredictionService {
   // 获取销售预测数据
   async getSalesPredictions(storeId: number, startDate: string, endDate: string) {
     try {
-      logger.info(`开始获取销售预测数据: storeId=${storeId}, startDate=${startDate}, endDate=${endDate}`);
-      
+      logger.info(
+        `开始获取销售预测数据: storeId=${storeId}, startDate=${startDate}, endDate=${endDate}`
+      );
+
       // 从PredictionResults表获取真实预测数据
       const query = `
         SELECT 
@@ -477,8 +537,8 @@ export class SalesPredictionService {
         password: 'YourStrong@Passw0rd',
         options: {
           encrypt: false,
-          trustServerCertificate: true
-        }
+          trustServerCertificate: true,
+        },
       };
 
       await sql.connect(dbConfig);
@@ -509,10 +569,10 @@ export class SalesPredictionService {
             const date = new Date(row.date);
             dateStr = date.toISOString().split('T')[0];
           }
-          
+
           // 确保predictedSales是数字类型
           const predictedSales = parseFloat(row.predictedSales) || 0;
-          
+
           predictions[dateStr] = {
             predictedSales: predictedSales,
             actualSales: row.actualSales || 0,
@@ -520,31 +580,33 @@ export class SalesPredictionService {
             confidenceLower: row.ConfidenceIntervalLower,
             confidenceUpper: row.ConfidenceIntervalUpper,
             factors: row.Factors ? JSON.parse(row.Factors) : {},
-            notes: row.Notes
+            notes: row.Notes,
           };
         });
 
-        logger.info(`成功处理 ${results.recordset.length} 条预测数据，总销售额: ${Object.values(predictions).reduce((sum: number, p: any) => sum + p.predictedSales, 0)}`);
+        logger.info(
+          `成功处理 ${results.recordset.length} 条预测数据，总销售额: ${Object.values(predictions).reduce((sum: number, p: any) => sum + p.predictedSales, 0)}`
+        );
         return predictions;
       } else {
         // 没有真实预测数据，生成默认的模拟数据
         logger.info(`门店 ${storeId} 在 ${startDate} 到 ${endDate} 期间没有预测数据，生成模拟数据`);
-        
+
         const predictions = {};
         const start = new Date(startDate);
         const end = new Date(endDate);
-        
+
         for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
           const dateStr = d.toISOString().split('T')[0];
-          
+
           // 生成模拟预测值 - 调整为更合理的范围
           const baseSales = 800 + Math.floor(Math.random() * 1200); // 800-2000元，更符合热狗店日销售额
           const weekday = d.getDay();
-          const weekdayFactor = (weekday === 0 || weekday === 6) ? 1.3 : 0.9; // 周末效应
+          const weekdayFactor = weekday === 0 || weekday === 6 ? 1.3 : 0.9; // 周末效应
           const randomFactor = 0.85 + Math.random() * 0.3; // 0.85-1.15
-          
+
           const predictedSales = Math.floor(baseSales * weekdayFactor * randomFactor);
-          
+
           predictions[dateStr] = {
             predictedSales,
             actualSales: 0,
@@ -556,12 +618,12 @@ export class SalesPredictionService {
               xgboost_prediction: Math.floor(predictedSales * 0.4),
               ensemble_prediction: predictedSales,
               weekday_factor: weekdayFactor,
-              random_factor: randomFactor
+              random_factor: randomFactor,
             },
-            notes: `Simulated prediction for ${dateStr}`
+            notes: `Simulated prediction for ${dateStr}`,
           };
         }
-        
+
         return predictions;
       }
     } catch (error) {
@@ -574,26 +636,26 @@ export class SalesPredictionService {
   async getPerformanceAnalysis(storeId: number, date: string) {
     try {
       logger.info(`开始获取业绩达成分析: storeId=${storeId}, date=${date}`);
-      
+
       // 生成模拟的实际销售数据
       const actualResults = [];
       let actualTotal = 0;
       let actualOrders = 0;
-      
+
       // 基础销售模式（按小时）
       const hourlyPattern = {
-        6: { sales: 50, orders: 2 },   // 早餐时间
+        6: { sales: 50, orders: 2 }, // 早餐时间
         7: { sales: 120, orders: 4 },
         8: { sales: 200, orders: 6 },
         9: { sales: 150, orders: 5 },
         10: { sales: 100, orders: 3 },
-        11: { sales: 300, orders: 8 },  // 午餐时间
+        11: { sales: 300, orders: 8 }, // 午餐时间
         12: { sales: 500, orders: 12 },
         13: { sales: 400, orders: 10 },
         14: { sales: 200, orders: 6 },
         15: { sales: 150, orders: 4 },
         16: { sales: 200, orders: 5 },
-        17: { sales: 350, orders: 8 },  // 晚餐时间
+        17: { sales: 350, orders: 8 }, // 晚餐时间
         18: { sales: 600, orders: 15 },
         19: { sales: 500, orders: 12 },
         20: { sales: 400, orders: 10 },
@@ -605,53 +667,53 @@ export class SalesPredictionService {
         2: { sales: 20, orders: 1 },
         3: { sales: 15, orders: 1 },
         4: { sales: 10, orders: 1 },
-        5: { sales: 25, orders: 1 }
+        5: { sales: 25, orders: 1 },
       };
-      
+
       // 生成实际销售数据（模拟）
       for (let hour = 0; hour < 24; hour++) {
         const basePattern = hourlyPattern[hour] || { sales: 100, orders: 3 };
         const randomFactor = 0.7 + Math.random() * 0.6; // 0.7-1.3
-        
+
         const sales = Math.round(basePattern.sales * randomFactor);
         const orders = Math.round(basePattern.orders * randomFactor);
-        
+
         actualResults.push({
           hour,
           sales,
-          orders
+          orders,
         });
-        
+
         actualTotal += sales;
         actualOrders += orders;
       }
-      
+
       logger.info(`生成模拟实际销售数据: ${actualResults.length} 条记录`);
 
       // 生成模拟的预测数据
       const predictedResults = [];
       let predictedTotal = 0;
       let predictedOrdersSum = 0;
-      
+
       // 预测数据通常比实际数据稍高一些（因为预测是理想情况）
       for (let hour = 0; hour < 24; hour++) {
         const basePattern = hourlyPattern[hour] || { sales: 100, orders: 3 };
         const randomFactor = 0.8 + Math.random() * 0.4; // 0.8-1.2
-        
+
         const predictedSales = Math.round(basePattern.sales * randomFactor * 1.1); // 预测比实际高10%
         const predictedOrders = Math.round(basePattern.orders * randomFactor * 1.1);
-        
+
         predictedResults.push({
           hour,
           predictedSales,
           predictedOrders,
-          confidence: 0.6 + Math.random() * 0.3 // 0.6-0.9
+          confidence: 0.6 + Math.random() * 0.3, // 0.6-0.9
         });
-        
+
         predictedTotal += predictedSales;
         predictedOrdersSum += predictedOrders;
       }
-      
+
       logger.info(`生成模拟预测数据: ${predictedResults.length} 条记录`);
 
       const result = {
@@ -662,8 +724,8 @@ export class SalesPredictionService {
           hourlyData: actualResults.map((r: any) => ({
             hour: r.hour,
             sales: r.sales || 0,
-            orders: r.orders || 0
-          }))
+            orders: r.orders || 0,
+          })),
         },
         predicted: {
           totalSales: predictedTotal,
@@ -672,43 +734,45 @@ export class SalesPredictionService {
             hour: r.hour,
             sales: r.predictedSales || 0,
             orders: r.predictedOrders || 0,
-            confidence: r.confidence || 0.7
-          }))
+            confidence: r.confidence || 0.7,
+          })),
         },
         achievement: {
           salesRate: predictedTotal > 0 ? (actualTotal / predictedTotal) * 100 : 0,
           ordersRate: predictedOrdersSum > 0 ? (actualOrders / predictedOrdersSum) * 100 : 0,
           remainingSales: Math.max(0, predictedTotal - actualTotal),
-          remainingOrders: Math.max(0, predictedOrdersSum - actualOrders)
-        }
+          remainingOrders: Math.max(0, predictedOrdersSum - actualOrders),
+        },
       };
 
-      logger.info(`业绩达成分析完成: 实际销售额=${actualTotal}, 预测销售额=${predictedTotal}, 达成率=${result.achievement.salesRate.toFixed(2)}%`);
-      
+      logger.info(
+        `业绩达成分析完成: 实际销售额=${actualTotal}, 预测销售额=${predictedTotal}, 达成率=${result.achievement.salesRate.toFixed(2)}%`
+      );
+
       return result;
     } catch (error) {
       logger.error('获取业绩达成分析失败:', error);
-      
+
       // 返回默认值而不是抛出错误
       return {
         date,
         actual: {
           totalSales: 0,
           totalOrders: 0,
-          hourlyData: []
+          hourlyData: [],
         },
         predicted: {
           totalSales: 0,
           totalOrders: 0,
-          hourlyData: []
+          hourlyData: [],
         },
         achievement: {
           salesRate: 0,
           ordersRate: 0,
           remainingSales: 0,
-          remainingOrders: 0
-        }
+          remainingOrders: 0,
+        },
       };
     }
   }
-} 
+}

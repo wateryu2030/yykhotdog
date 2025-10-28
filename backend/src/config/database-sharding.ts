@@ -3,13 +3,13 @@ import { logger } from '../utils/logger';
 
 // 区域配置
 export const REGIONS = {
-  NORTH: 'north',      // 华北
-  EAST: 'east',        // 华东
-  SOUTH: 'south',      // 华南
-  CENTRAL: 'central',  // 华中
+  NORTH: 'north', // 华北
+  EAST: 'east', // 华东
+  SOUTH: 'south', // 华南
+  CENTRAL: 'central', // 华中
   SOUTHWEST: 'southwest', // 西南
   NORTHWEST: 'northwest', // 西北
-  NORTHEAST: 'northeast'  // 东北
+  NORTHEAST: 'northeast', // 东北
 } as const;
 
 // 数据库分片配置
@@ -62,58 +62,58 @@ export const DATABASE_SHARDS = {
     database: 'hotdog_northeast_001',
     username: process.env['DB_NORTHEAST_USER'] || 'sa',
     password: process.env['DB_NORTHEAST_PASSWORD'] || 'YourStrong@Passw0rd',
-  }
+  },
 };
 
 // 省份到区域映射
 export const PROVINCE_TO_REGION: Record<string, string> = {
   // 华北
-  '北京市': REGIONS.NORTH,
-  '天津市': REGIONS.NORTH,
-  '河北省': REGIONS.NORTH,
-  '山西省': REGIONS.NORTH,
-  '内蒙古自治区': REGIONS.NORTH,
-  
+  北京市: REGIONS.NORTH,
+  天津市: REGIONS.NORTH,
+  河北省: REGIONS.NORTH,
+  山西省: REGIONS.NORTH,
+  内蒙古自治区: REGIONS.NORTH,
+
   // 华东
-  '上海市': REGIONS.EAST,
-  '江苏省': REGIONS.EAST,
-  '浙江省': REGIONS.EAST,
-  '安徽省': REGIONS.EAST,
-  '福建省': REGIONS.EAST,
-  '江西省': REGIONS.EAST,
-  '山东省': REGIONS.EAST,
-  
+  上海市: REGIONS.EAST,
+  江苏省: REGIONS.EAST,
+  浙江省: REGIONS.EAST,
+  安徽省: REGIONS.EAST,
+  福建省: REGIONS.EAST,
+  江西省: REGIONS.EAST,
+  山东省: REGIONS.EAST,
+
   // 华南
-  '广东省': REGIONS.SOUTH,
-  '广西壮族自治区': REGIONS.SOUTH,
-  '海南省': REGIONS.SOUTH,
-  '香港特别行政区': REGIONS.SOUTH,
-  '澳门特别行政区': REGIONS.SOUTH,
-  '台湾省': REGIONS.SOUTH,
-  
+  广东省: REGIONS.SOUTH,
+  广西壮族自治区: REGIONS.SOUTH,
+  海南省: REGIONS.SOUTH,
+  香港特别行政区: REGIONS.SOUTH,
+  澳门特别行政区: REGIONS.SOUTH,
+  台湾省: REGIONS.SOUTH,
+
   // 华中
-  '河南省': REGIONS.CENTRAL,
-  '湖北省': REGIONS.CENTRAL,
-  '湖南省': REGIONS.CENTRAL,
-  
+  河南省: REGIONS.CENTRAL,
+  湖北省: REGIONS.CENTRAL,
+  湖南省: REGIONS.CENTRAL,
+
   // 西南
-  '重庆市': REGIONS.SOUTHWEST,
-  '四川省': REGIONS.SOUTHWEST,
-  '贵州省': REGIONS.SOUTHWEST,
-  '云南省': REGIONS.SOUTHWEST,
-  '西藏自治区': REGIONS.SOUTHWEST,
-  
+  重庆市: REGIONS.SOUTHWEST,
+  四川省: REGIONS.SOUTHWEST,
+  贵州省: REGIONS.SOUTHWEST,
+  云南省: REGIONS.SOUTHWEST,
+  西藏自治区: REGIONS.SOUTHWEST,
+
   // 西北
-  '陕西省': REGIONS.NORTHWEST,
-  '甘肃省': REGIONS.NORTHWEST,
-  '青海省': REGIONS.NORTHWEST,
-  '宁夏回族自治区': REGIONS.NORTHWEST,
-  '新疆维吾尔自治区': REGIONS.NORTHWEST,
-  
+  陕西省: REGIONS.NORTHWEST,
+  甘肃省: REGIONS.NORTHWEST,
+  青海省: REGIONS.NORTHWEST,
+  宁夏回族自治区: REGIONS.NORTHWEST,
+  新疆维吾尔自治区: REGIONS.NORTHWEST,
+
   // 东北
-  '辽宁省': REGIONS.NORTHEAST,
-  '吉林省': REGIONS.NORTHEAST,
-  '黑龙江省': REGIONS.NORTHEAST
+  辽宁省: REGIONS.NORTHEAST,
+  吉林省: REGIONS.NORTHEAST,
+  黑龙江省: REGIONS.NORTHEAST,
 };
 
 // 数据库连接池
@@ -151,16 +151,16 @@ export function getDatabaseName(region: string, shardIndex: number): string {
 export function getDatabaseConnection(region: string, shardIndex: number = 0): Sequelize {
   const dbName = getDatabaseName(region, shardIndex);
   const poolKey = `${region}_${shardIndex}`;
-  
+
   if (connectionPools[poolKey]) {
     return connectionPools[poolKey];
   }
-  
+
   const config = DATABASE_SHARDS[region];
   if (!config) {
     throw new Error(`未找到区域 ${region} 的数据库配置`);
   }
-  
+
   const sequelize = new Sequelize({
     dialect: 'mssql',
     host: config.host,
@@ -180,9 +180,9 @@ export function getDatabaseConnection(region: string, shardIndex: number = 0): S
       acquire: 30000,
       idle: 10000,
     },
-    logging: (msg) => logger.debug(msg),
+    logging: msg => logger.debug(msg),
   });
-  
+
   connectionPools[poolKey] = sequelize;
   return sequelize;
 }
@@ -201,7 +201,7 @@ export function getStoreDatabaseConnection(storeId: number, province: string): S
  */
 export function getAllDatabaseConnections(): Sequelize[] {
   const connections: Sequelize[] = [];
-  
+
   for (const region of Object.values(REGIONS)) {
     for (let shardIndex = 0; shardIndex < 100; shardIndex++) {
       try {
@@ -212,7 +212,7 @@ export function getAllDatabaseConnections(): Sequelize[] {
       }
     }
   }
-  
+
   return connections;
 }
 
@@ -221,7 +221,7 @@ export function getAllDatabaseConnections(): Sequelize[] {
  */
 export async function testDatabaseConnections(): Promise<void> {
   logger.info('开始测试数据库连接...');
-  
+
   for (const region of Object.values(REGIONS)) {
     try {
       const connection = getDatabaseConnection(region, 0);
@@ -238,7 +238,7 @@ export async function testDatabaseConnections(): Promise<void> {
  */
 export async function closeAllDatabaseConnections(): Promise<void> {
   logger.info('关闭所有数据库连接...');
-  
+
   for (const connection of Object.values(connectionPools)) {
     try {
       await connection.close();
@@ -246,7 +246,7 @@ export async function closeAllDatabaseConnections(): Promise<void> {
       logger.warn(`关闭数据库连接失败: ${error}`);
     }
   }
-  
+
   // 清空连接池
   Object.keys(connectionPools).forEach(key => delete connectionPools[key]);
 }
@@ -258,58 +258,60 @@ export class DataMigration {
   /**
    * 迁移门店数据到分片数据库
    */
-  static async migrateStoreData(sourceConnection: Sequelize, storeId: number, province: string): Promise<void> {
+  static async migrateStoreData(
+    sourceConnection: Sequelize,
+    storeId: number,
+    province: string
+  ): Promise<void> {
     const targetConnection = getStoreDatabaseConnection(storeId, province);
-    
+
     try {
       // 开始事务
       const transaction = await targetConnection.transaction();
-      
+
       try {
         // 迁移门店基础信息
-        const storeData = await sourceConnection.query(
-          'SELECT * FROM stores WHERE id = :storeId',
-          {
-            replacements: { storeId },
-            type: 'SELECT'
-          }
-        );
-        
+        const storeData = await sourceConnection.query('SELECT * FROM stores WHERE id = :storeId', {
+          replacements: { storeId },
+          type: 'SELECT',
+        });
+
         if (storeData[0].length > 0) {
           await targetConnection.query(
             'INSERT INTO stores (id, store_code, store_name, store_type, status, province, city, district, address, longitude, latitude, area_size, rent_amount, investment_amount, expected_revenue, created_at, updated_at) VALUES (:id, :store_code, :store_name, :store_type, :status, :province, :city, :district, :address, :longitude, :latitude, :area_size, :rent_amount, :investment_amount, :expected_revenue, :created_at, :updated_at)',
             {
               replacements: storeData[0][0] as { [key: string]: unknown },
-              type: 'INSERT'
+              type: 'INSERT',
             }
           );
         }
-        
+
         // 提交事务
         await transaction.commit();
         logger.info(`门店 ${storeId} 数据迁移成功`);
-        
       } catch (error) {
         // 回滚事务
         await transaction.rollback();
         throw error;
       }
-      
     } catch (error) {
       logger.error(`门店 ${storeId} 数据迁移失败: ${error}`);
       throw error;
     }
   }
-  
+
   /**
    * 批量迁移数据
    */
-  static async batchMigrateData(sourceConnection: Sequelize, batchSize: number = 1000): Promise<void> {
+  static async batchMigrateData(
+    sourceConnection: Sequelize,
+    batchSize: number = 1000
+  ): Promise<void> {
     logger.info('开始批量数据迁移...');
-    
+
     let offset = 0;
     let hasMore = true;
-    
+
     while (hasMore) {
       try {
         // 获取一批门店数据
@@ -317,31 +319,30 @@ export class DataMigration {
           'SELECT id, province FROM stores ORDER BY id LIMIT :limit OFFSET :offset',
           {
             replacements: { limit: batchSize, offset },
-            type: 'SELECT'
+            type: 'SELECT',
           }
         );
-        
+
         if (stores[0].length === 0) {
           hasMore = false;
           break;
         }
-        
+
         // 并行迁移数据
         const migrationPromises = stores[0].map((store: any) =>
           this.migrateStoreData(sourceConnection, store.id, store.province)
         );
-        
+
         await Promise.all(migrationPromises);
-        
+
         offset += batchSize;
         logger.info(`已迁移 ${offset} 条门店数据`);
-        
       } catch (error) {
         logger.error(`批量迁移失败，偏移量 ${offset}: ${error}`);
         throw error;
       }
     }
-    
+
     logger.info('批量数据迁移完成');
   }
 }
@@ -358,5 +359,5 @@ export default {
   getAllDatabaseConnections,
   testDatabaseConnections,
   closeAllDatabaseConnections,
-  DataMigration
+  DataMigration,
 };

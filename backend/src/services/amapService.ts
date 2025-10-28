@@ -45,7 +45,7 @@ class AmapService {
   private baseUrl: string = 'https://restapi.amap.com/v3/place/text';
   private requestDelays: Map<string, number> = new Map(); // 记录每个API Key的请求延迟
   private lastRequestTime: Map<string, number> = new Map(); // 记录每个API Key的最后请求时间
-  private cache: Map<string, { data: SchoolInfo[], timestamp: number }> = new Map(); // 缓存搜索结果
+  private cache: Map<string, { data: SchoolInfo[]; timestamp: number }> = new Map(); // 缓存搜索结果
   private cacheExpiry: number = 24 * 60 * 60 * 1000; // 缓存24小时
 
   constructor() {
@@ -55,9 +55,9 @@ class AmapService {
       'bdca958664f9ce5e3e6cb7aad0fc49ac', // zhhotdog
       '703f67ca1815ae0324022fcf7bc2afe9', // newstore
       '94726e955daa3fa24f48d0b42a17d02d', // newhotdog
-      '1d6753a00b98dab6d19aac1f8a080165'  // hotdogxuanzhi
+      '1d6753a00b98dab6d19aac1f8a080165', // hotdogxuanzhi
     ];
-    
+
     // 初始化每个API Key的延迟时间（毫秒）
     this.apiKeys.forEach(key => {
       this.requestDelays.set(key, 1000); // 初始延迟1秒
@@ -89,21 +89,27 @@ class AmapService {
             const schools = await this.searchSchoolsByKeyword(keyword, province, city, district);
             allSchools.push(...schools);
             success = true;
-            logger.info(`使用API Key ${this.currentKeyIndex + 1} 成功搜索到${schools.length}所${keyword}`);
+            logger.info(
+              `使用API Key ${this.currentKeyIndex + 1} 成功搜索到${schools.length}所${keyword}`
+            );
           } catch (error) {
             attempts++;
             logger.warn(`搜索${keyword}失败 (尝试 ${attempts}/${maxAttempts}):`, error);
-            
+
             // 如果当前API Key失败，尝试下一个
             if (error instanceof Error && error.message.includes('USER_DAILY_QUERY_OVER_LIMIT')) {
               this.switchToNextApiKey();
-              logger.info(`切换到下一个API Key: ${this.currentKeyIndex + 1}/${this.apiKeys.length}`);
+              logger.info(
+                `切换到下一个API Key: ${this.currentKeyIndex + 1}/${this.apiKeys.length}`
+              );
               // 对于超限错误，等待更长时间
               await this.sleep(5000);
             } else {
               // 如果是其他错误，也尝试下一个API Key
               this.switchToNextApiKey();
-              logger.info(`切换到下一个API Key: ${this.currentKeyIndex + 1}/${this.apiKeys.length}`);
+              logger.info(
+                `切换到下一个API Key: ${this.currentKeyIndex + 1}/${this.apiKeys.length}`
+              );
             }
           }
         }
@@ -115,15 +121,14 @@ class AmapService {
 
       // 去重处理
       const uniqueSchools = this.removeDuplicateSchools(allSchools);
-      
+
       // 保存到缓存
       if (uniqueSchools.length > 0) {
         this.setCache(province, city, district, uniqueSchools);
       }
-      
+
       logger.info(`在${province}${city}${district}找到${uniqueSchools.length}所学校`);
       return uniqueSchools;
-
     } catch (error) {
       logger.error('搜索学校失败:', error);
       throw error;
@@ -159,13 +164,13 @@ class AmapService {
     const delay = this.requestDelays.get(apiKey) || 1000;
     const now = Date.now();
     const timeSinceLastRequest = now - lastRequest;
-    
+
     if (timeSinceLastRequest < delay) {
       const waitTime = delay - timeSinceLastRequest;
       logger.info(`API Key ${apiKey} 冷却中，等待 ${waitTime}ms`);
       await this.sleep(waitTime);
     }
-    
+
     this.lastRequestTime.set(apiKey, Date.now());
   }
 
@@ -174,7 +179,7 @@ class AmapService {
    */
   private adjustApiKeyDelay(apiKey: string, success: boolean): void {
     const currentDelay = this.requestDelays.get(apiKey) || 1000;
-    
+
     if (success) {
       // 成功时减少延迟，但不少于500ms
       const newDelay = Math.max(500, currentDelay * 0.9);
@@ -201,12 +206,12 @@ class AmapService {
   private getFromCache(province: string, city: string, district: string): SchoolInfo[] | null {
     const key = this.getCacheKey(province, city, district);
     const cached = this.cache.get(key);
-    
-    if (cached && (Date.now() - cached.timestamp) < this.cacheExpiry) {
+
+    if (cached && Date.now() - cached.timestamp < this.cacheExpiry) {
       logger.info(`从缓存获取 ${province}${city}${district} 的学校数据`);
       return cached.data;
     }
-    
+
     return null;
   }
 
@@ -217,7 +222,7 @@ class AmapService {
     const key = this.getCacheKey(province, city, district);
     this.cache.set(key, {
       data,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
     logger.info(`缓存 ${province}${city}${district} 的学校数据，共 ${data.length} 条`);
   }
@@ -226,19 +231,19 @@ class AmapService {
    * 根据关键词搜索学校
    */
   private async searchSchoolsByKeyword(
-    keyword: string, 
-    province: string, 
-    city: string, 
+    keyword: string,
+    province: string,
+    city: string,
     district: string
   ): Promise<SchoolInfo[]> {
     const apiKey = this.getCurrentApiKey();
-    
+
     try {
       // 等待API Key冷却时间
       await this.waitForApiKeyCooldown(apiKey);
-      
+
       const query = `${keyword} ${district}`;
-      
+
       const response = await axios.get<AmapResponse>(this.baseUrl, {
         params: {
           key: apiKey,
@@ -247,8 +252,8 @@ class AmapService {
           output: 'json',
           page: 1,
           offset: 25, // 每页最多25条
-          extensions: 'all'
-        }
+          extensions: 'all',
+        },
       });
 
       if (response.data.status !== '1') {
@@ -258,9 +263,8 @@ class AmapService {
 
       // 成功时调整延迟
       this.adjustApiKeyDelay(apiKey, true);
-      
-      return this.convertToSchoolInfo(response.data.pois, province, city, district, keyword);
 
+      return this.convertToSchoolInfo(response.data.pois, province, city, district, keyword);
     } catch (error) {
       // 失败时调整延迟
       this.adjustApiKeyDelay(apiKey, false);
@@ -273,15 +277,15 @@ class AmapService {
    * 将高德地图POI数据转换为学校信息
    */
   private convertToSchoolInfo(
-    pois: AmapPOI[], 
-    province: string, 
-    city: string, 
+    pois: AmapPOI[],
+    province: string,
+    city: string,
     district: string,
     schoolType: string
   ): SchoolInfo[] {
     return pois.map(poi => {
       const [longitude, latitude] = poi.location.split(',').map(coord => parseFloat(coord));
-      
+
       return {
         school_name: poi.name,
         school_type: this.mapSchoolType(poi.type, schoolType),
@@ -292,7 +296,7 @@ class AmapService {
         latitude,
         longitude,
         contact_phone: poi.tel || '',
-        description: `${poi.type} - ${poi.business_area || ''}`
+        description: `${poi.type} - ${poi.business_area || ''}`,
       };
     });
   }
@@ -307,7 +311,7 @@ class AmapService {
     if (keyword.includes('大学')) return '大学';
     if (keyword.includes('职业')) return '职业学校';
     if (keyword.includes('培训')) return '培训机构';
-    
+
     // 根据POI类型判断
     if (poiType.includes('小学')) return '小学';
     if (poiType.includes('中学') || poiType.includes('初中')) return '初中';
@@ -315,7 +319,7 @@ class AmapService {
     if (poiType.includes('大学')) return '大学';
     if (poiType.includes('职业')) return '职业学校';
     if (poiType.includes('培训')) return '培训机构';
-    
+
     return '其他';
   }
 
@@ -334,11 +338,13 @@ class AmapService {
     });
   }
 
-
   /**
    * 获取学校详细信息（包括学生人数等）
    */
-  async getSchoolDetails(schoolName: string, address: string): Promise<{
+  async getSchoolDetails(
+    schoolName: string,
+    address: string
+  ): Promise<{
     student_count: number;
     teacher_count: number;
     established_year: number;
@@ -348,9 +354,9 @@ class AmapService {
     // 目前返回模拟数据
     return {
       student_count: Math.floor(Math.random() * 2000) + 100, // 100-2100人
-      teacher_count: Math.floor(Math.random() * 100) + 20,   // 20-120人
+      teacher_count: Math.floor(Math.random() * 100) + 20, // 20-120人
       established_year: Math.floor(Math.random() * 50) + 1970, // 1970-2020年
-      school_level: Math.random() > 0.7 ? '重点' : '普通'
+      school_level: Math.random() > 0.7 ? '重点' : '普通',
     };
   }
 }

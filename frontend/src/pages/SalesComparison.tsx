@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Progress, Button, Space, Select, DatePicker, message, Typography, Badge, Avatar } from 'antd';
+import { Card, Row, Col, Statistic, Progress, Button, Space, Select, DatePicker, message, Typography, Badge, Avatar, Tabs } from 'antd';
 import { Line, Bar, Doughnut } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -21,10 +21,12 @@ import {
   RiseOutlined,
   LineChartOutlined,
   BellOutlined,
-  UserOutlined
+  UserOutlined,
+  ClockCircleOutlined
 } from '@ant-design/icons';
 import dayjs, { Dayjs } from 'dayjs';
 import { api } from '../config/api';
+import OptimizedHourlyComparisonChart from '../components/OptimizedHourlyComparisonChart';
 
 // 注册Chart.js组件
 ChartJS.register(
@@ -1017,8 +1019,17 @@ const SalesComparison: React.FC = () => {
           </Row>
         </Card>
 
-        {/* 概览分析 - 城市和门店基本情况 */}
-        {comparisonType === 'overview' && (
+        {/* 主要内容区域 - 使用标签页 */}
+        <Tabs 
+          defaultActiveKey="overview"
+          items={[
+            {
+              key: 'overview',
+              label: '概览分析',
+              children: (
+                <>
+                  {/* 概览分析 - 城市和门店基本情况 */}
+                  {comparisonType === 'overview' && (
           <>
             {/* 城市概览信息框 */}
           <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
@@ -1122,11 +1133,18 @@ const SalesComparison: React.FC = () => {
                 </Card>
               </Col>
             </Row>
-          </>
-        )}
-
-        {/* 城市对比分析 */}
-        {comparisonType === 'city-comparison' && (
+                  </>
+                )}
+                </>
+              )
+            },
+            {
+              key: 'city-comparison',
+              label: '城市对比',
+              children: (
+                <>
+                  {/* 城市对比分析 */}
+                  {comparisonType === 'city-comparison' && (
           <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
             <Col xs={24}>
               <Card title={
@@ -1189,10 +1207,17 @@ const SalesComparison: React.FC = () => {
               </Card>
             </Col>
           </Row>
-        )}
-
-        {/* 门店对比分析 */}
-        {comparisonType === 'store-comparison' && (
+                  )}
+                </>
+              )
+            },
+            {
+              key: 'store-comparison',
+              label: '门店对比',
+              children: (
+                <>
+                  {/* 门店对比分析 */}
+                  {comparisonType === 'store-comparison' && (
           <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
             <Col xs={24}>
               <Card title={
@@ -2173,7 +2198,43 @@ const SalesComparison: React.FC = () => {
               </Card>
             </Col>
           </Row>
-        )}
+                  )}
+                </>
+              )
+            },
+            {
+              key: 'hourly-comparison',
+              label: (
+                <Space>
+                  <ClockCircleOutlined />
+                  小时级对比
+                </Space>
+              ),
+              children: (
+                <>
+                  {/* 小时级对比分析 */}
+                  {selectedStores.length > 0 && (
+                    <OptimizedHourlyComparisonChart
+                      storeId={selectedStores[0]}
+                      startDate={dateRange[0].format('YYYY-MM-DD')}
+                      endDate={dateRange[1].format('YYYY-MM-DD')}
+                      enableCache={true}
+                      cacheTTL={5 * 60 * 1000} // 5分钟缓存
+                    />
+                  )}
+                  {selectedStores.length === 0 && (
+                    <Card>
+                      <div style={{ textAlign: 'center', padding: '40px' }}>
+                        <ClockCircleOutlined style={{ fontSize: '48px', color: '#ccc', marginBottom: '16px' }} />
+                        <div style={{ fontSize: '16px', color: '#999' }}>请先选择门店进行小时级对比分析</div>
+                      </div>
+                    </Card>
+                  )}
+                </>
+              )
+            }
+          ]}
+        />
       </Card>
     </div>
   );

@@ -41,7 +41,7 @@ export class OpenAIService {
       return {
         success: false,
         error: 'OpenAI API密钥未配置',
-        suggestion: '请在.env文件中设置OPENAI_API_KEY环境变量'
+        suggestion: '请在.env文件中设置OPENAI_API_KEY环境变量',
       };
     }
     try {
@@ -67,27 +67,27 @@ ${code}
         messages: [
           {
             role: 'system',
-            content: '你是一个专业的代码审查专家，擅长各种编程语言和最佳实践。'
+            content: '你是一个专业的代码审查专家，擅长各种编程语言和最佳实践。',
           },
           {
             role: 'user',
-            content: prompt
-          }
+            content: prompt,
+          },
         ],
         max_tokens: 2000,
-        temperature: 0.3
+        temperature: 0.3,
       });
 
       return {
         success: true,
         review: response.choices[0].message.content,
-        usage: response.usage
+        usage: response.usage,
       };
     } catch (error) {
       logger.error('OpenAI代码审查失败:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : '未知错误'
+        error: error instanceof Error ? error.message : '未知错误',
       };
     }
   }
@@ -118,27 +118,27 @@ ${code}
         messages: [
           {
             role: 'system',
-            content: '你是一个专业的商业数据分析师，擅长从数据中提取有价值的洞察。'
+            content: '你是一个专业的商业数据分析师，擅长从数据中提取有价值的洞察。',
           },
           {
             role: 'user',
-            content: prompt
-          }
+            content: prompt,
+          },
         ],
         max_tokens: 2000,
-        temperature: 0.3
+        temperature: 0.3,
       });
 
       return {
         success: true,
         analysis: response.choices[0].message.content,
-        usage: response.usage
+        usage: response.usage,
       };
     } catch (error) {
       logger.error('OpenAI业务数据分析失败:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : '未知错误'
+        error: error instanceof Error ? error.message : '未知错误',
       };
     }
   }
@@ -169,27 +169,27 @@ ${code}
         messages: [
           {
             role: 'system',
-            content: '你是一个专业的商业分析师，擅长生成高质量的商业报告。'
+            content: '你是一个专业的商业分析师，擅长生成高质量的商业报告。',
           },
           {
             role: 'user',
-            content: prompt
-          }
+            content: prompt,
+          },
         ],
         max_tokens: 3000,
-        temperature: 0.3
+        temperature: 0.3,
       });
 
       return {
         success: true,
         report: response.choices[0].message.content,
-        usage: response.usage
+        usage: response.usage,
       };
     } catch (error) {
       logger.error('OpenAI报告生成失败:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : '未知错误'
+        error: error instanceof Error ? error.message : '未知错误',
       };
     }
   }
@@ -219,27 +219,27 @@ ${code}
         messages: [
           {
             role: 'system',
-            content: '你是一个专业的软件工程师，擅长错误诊断和问题解决。'
+            content: '你是一个专业的软件工程师，擅长错误诊断和问题解决。',
           },
           {
             role: 'user',
-            content: prompt
-          }
+            content: prompt,
+          },
         ],
         max_tokens: 1500,
-        temperature: 0.3
+        temperature: 0.3,
       });
 
       return {
         success: true,
         diagnosis: response.choices[0].message.content,
-        usage: response.usage
+        usage: response.usage,
       };
     } catch (error) {
       logger.error('OpenAI错误诊断失败:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : '未知错误'
+        error: error instanceof Error ? error.message : '未知错误',
       };
     }
   }
@@ -274,27 +274,27 @@ ${code}
         messages: [
           {
             role: 'system',
-            content: '你是一个专业的性能优化专家，擅长代码性能分析和优化。'
+            content: '你是一个专业的性能优化专家，擅长代码性能分析和优化。',
           },
           {
             role: 'user',
-            content: prompt
-          }
+            content: prompt,
+          },
         ],
         max_tokens: 2000,
-        temperature: 0.3
+        temperature: 0.3,
       });
 
       return {
         success: true,
         optimization: response.choices[0].message.content,
-        usage: response.usage
+        usage: response.usage,
       };
     } catch (error) {
       logger.error('OpenAI性能优化失败:', error);
       return {
         success: false,
-        error: error instanceof Error ? error.message : '未知错误'
+        error: error instanceof Error ? error.message : '未知错误',
       };
     }
   }

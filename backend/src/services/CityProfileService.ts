@@ -7,7 +7,7 @@ export class CityProfileService {
       cityName: '示例城市',
       population: 1000000,
       gdp: 50000000000,
-      averageIncome: 50000
+      averageIncome: 50000,
     };
   }
 }

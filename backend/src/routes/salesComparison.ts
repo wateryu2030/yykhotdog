@@ -17,22 +17,31 @@ router.get('/product-categories', async (req: Request, res: Response) => {
   try {
     // 先尝试从数据库获取商品品类
     let categories: any[] = [];
-    
+
     try {
       // 修复SQL查询，使用SQL Server语法
-      const categoryQuery = `
-        SELECT DISTINCT 
-          ISNULL(product_category, '未知品类') as category
-        FROM order_items
-        WHERE product_category IS NOT NULL
-          AND product_category != ''
-        ORDER BY category
-      `;
+    const categoryQuery = `
+      SELECT DISTINCT 
+        '热狗类' as category
+      FROM order_items
+      WHERE product_name LIKE '%热狗%'
+      UNION
+      SELECT DISTINCT 
+        '套餐类' as category
+      FROM order_items
+      WHERE product_name LIKE '%套餐%'
+      UNION
+      SELECT DISTINCT 
+        '其他' as category
+      FROM order_items
+      WHERE product_name NOT LIKE '%热狗%' AND product_name NOT LIKE '%套餐%'
+      ORDER BY category
+    `;
 
       const result = await sequelize.query(categoryQuery, {
         type: QueryTypes.SELECT,
       });
-      
+
       categories = result as any[];
     } catch (dbError) {
       console.log('数据库查询失败，使用默认品类:', dbError);
@@ -44,7 +53,7 @@ router.get('/product-categories', async (req: Request, res: Response) => {
         { category: '热狗类' },
         { category: '饮料类' },
         { category: '小食类' },
-        { category: '套餐类' }
+        { category: '套餐类' },
       ];
     }
 
@@ -52,16 +61,15 @@ router.get('/product-categories', async (req: Request, res: Response) => {
       success: true,
       data: categories.map(cat => ({
         value: cat.category,
-        label: cat.category
-      }))
+        label: cat.category,
+      })),
     });
-
   } catch (error) {
     console.error('获取商品品类失败:', error);
     res.status(500).json({
       success: false,
       error: '获取商品品类失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -76,18 +84,18 @@ router.get('/product-categories', async (req: Request, res: Response) => {
 router.get('/city-comparison', async (req: Request, res: Response) => {
   try {
     const { startDate, endDate, compareType = 'previous', cities } = req.query;
-    
+
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
-        error: '请提供开始日期和结束日期'
+        error: '请提供开始日期和结束日期',
       });
     }
 
     // 计算对比期间
     const { currentPeriod, comparePeriod } = calculateComparePeriods(
-      startDate as string, 
-      endDate as string, 
+      startDate as string,
+      endDate as string,
       compareType as string
     );
 
@@ -119,20 +127,20 @@ router.get('/city-comparison', async (req: Request, res: Response) => {
 
     const currentData = await sequelize.query(cityComparisonQuery, {
       type: QueryTypes.SELECT,
-      replacements: { 
+      replacements: {
         startDate: currentPeriod.startDate,
         endDate: currentPeriod.endDate,
-        cities: cities ? (cities as string).split(',') : null
-      }
+        cities: cities ? (cities as string).split(',') : null,
+      },
     });
 
     const compareData = await sequelize.query(cityComparisonQuery, {
       type: QueryTypes.SELECT,
-      replacements: { 
+      replacements: {
         startDate: comparePeriod.startDate,
         endDate: comparePeriod.endDate,
-        cities: cities ? (cities as string).split(',') : null
-      }
+        cities: cities ? (cities as string).split(',') : null,
+      },
     });
 
     // 计算对比数据
@@ -144,15 +152,14 @@ router.get('/city-comparison', async (req: Request, res: Response) => {
         currentPeriod,
         comparePeriod,
         cityComparison,
-        summary: calculateCitySummary(cityComparison)
-      }
+        summary: calculateCitySummary(cityComparison),
+      },
     });
-
   } catch (error) {
     console.error('获取城市对比数据失败:', error);
     res.status(500).json({
       success: false,
-      error: '获取城市对比数据失败'
+      error: '获取城市对比数据失败',
     });
   }
 });
@@ -163,7 +170,7 @@ router.get('/city-comparison', async (req: Request, res: Response) => {
 router.get('/store-comparison-debug', async (req: Request, res: Response) => {
   try {
     const { startDate, endDate } = req.query;
-    
+
     // 使用与城市对比API相同的查询模式
     const query = `
       SELECT 
@@ -186,24 +193,23 @@ router.get('/store-comparison-debug', async (req: Request, res: Response) => {
 
     const data = await sequelize.query(query, {
       type: QueryTypes.SELECT,
-      replacements: { 
+      replacements: {
         startDate: startDate,
-        endDate: endDate
-      }
+        endDate: endDate,
+      },
     });
 
     res.json({
       success: true,
       data: data,
-      count: data.length
+      count: data.length,
     });
-
   } catch (error) {
     console.error('调试门店查询失败:', error);
     res.status(500).json({
       success: false,
       error: '调试门店查询失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -216,17 +222,17 @@ router.get('/store-comparison-debug', async (req: Request, res: Response) => {
 router.get('/store-comparison', async (req: Request, res: Response) => {
   try {
     const { startDate, endDate, compareType = 'previous', storeIds, city } = req.query;
-    
+
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
-        error: '请提供开始日期和结束日期'
+        error: '请提供开始日期和结束日期',
       });
     }
 
     const { currentPeriod, comparePeriod } = calculateComparePeriods(
-      startDate as string, 
-      endDate as string, 
+      startDate as string,
+      endDate as string,
       compareType as string
     );
 
@@ -253,19 +259,19 @@ router.get('/store-comparison', async (req: Request, res: Response) => {
     // 获取当前期间数据
     const currentData = await sequelize.query(storeComparisonQuery, {
       type: QueryTypes.SELECT,
-      replacements: { 
+      replacements: {
         startDate: currentPeriod.startDate,
-        endDate: currentPeriod.endDate
-      }
+        endDate: currentPeriod.endDate,
+      },
     });
 
     // 获取对比期间数据
     const compareData = await sequelize.query(storeComparisonQuery, {
       type: QueryTypes.SELECT,
-      replacements: { 
+      replacements: {
         startDate: comparePeriod.startDate,
-        endDate: comparePeriod.endDate
-      }
+        endDate: comparePeriod.endDate,
+      },
     });
 
     // 计算对比数据
@@ -278,16 +284,15 @@ router.get('/store-comparison', async (req: Request, res: Response) => {
         currentPeriod,
         comparePeriod,
         storeComparison,
-        summary
-      }
+        summary,
+      },
     });
-
   } catch (error) {
     console.error('获取门店对比数据失败:', error);
     res.status(500).json({
       success: false,
       error: '获取门店对比数据失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -302,17 +307,17 @@ router.get('/store-comparison', async (req: Request, res: Response) => {
 router.get('/product-comparison', async (req: Request, res: Response) => {
   try {
     const { startDate, endDate, compareType = 'previous', storeIds, categories } = req.query;
-    
+
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
-        error: '请提供开始日期和结束日期'
+        error: '请提供开始日期和结束日期',
       });
     }
 
     const { currentPeriod, comparePeriod } = calculateComparePeriods(
-      startDate as string, 
-      endDate as string, 
+      startDate as string,
+      endDate as string,
       compareType as string
     );
 
@@ -320,7 +325,6 @@ router.get('/product-comparison', async (req: Request, res: Response) => {
     const productComparisonQuery = `
       SELECT 
         oi.product_name,
-        oi.product_category,
         COUNT(DISTINCT o.store_id) as store_count,
         SUM(ISNULL(oi.total_price, 0)) as total_sales,
         SUM(ISNULL(oi.quantity, 0)) as total_quantity,
@@ -328,27 +332,28 @@ router.get('/product-comparison', async (req: Request, res: Response) => {
       FROM order_items oi
       INNER JOIN orders o ON oi.order_id = o.id
       WHERE o.delflag = 0
-        AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate
-      GROUP BY oi.product_name, oi.product_category
+        AND o.created_at >= :startDate
+        AND o.created_at <= :endDate
+      GROUP BY oi.product_name
       ORDER BY total_sales DESC
     `;
 
     // 获取当前期间数据
     const currentData = await sequelize.query(productComparisonQuery, {
       type: QueryTypes.SELECT,
-      replacements: { 
+      replacements: {
         startDate: currentPeriod.startDate,
-        endDate: currentPeriod.endDate
-      }
+        endDate: currentPeriod.endDate,
+      },
     });
 
     // 获取对比期间数据
     const compareData = await sequelize.query(productComparisonQuery, {
       type: QueryTypes.SELECT,
-      replacements: { 
+      replacements: {
         startDate: comparePeriod.startDate,
-        endDate: comparePeriod.endDate
-      }
+        endDate: comparePeriod.endDate,
+      },
     });
 
     // 计算对比数据
@@ -361,16 +366,15 @@ router.get('/product-comparison', async (req: Request, res: Response) => {
         currentPeriod,
         comparePeriod,
         productComparison,
-        summary
-      }
+        summary,
+      },
     });
-
   } catch (error) {
     console.error('获取商品对比数据失败:', error);
     res.status(500).json({
       success: false,
       error: '获取商品对比数据失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -385,17 +389,17 @@ router.get('/product-comparison', async (req: Request, res: Response) => {
 router.get('/efficiency-comparison', async (req: Request, res: Response) => {
   try {
     const { startDate, endDate, compareType = 'previous', storeIds } = req.query;
-    
+
     if (!startDate || !endDate) {
       return res.status(400).json({
         success: false,
-        error: '请提供开始日期和结束日期'
+        error: '请提供开始日期和结束日期',
       });
     }
 
     const { currentPeriod, comparePeriod } = calculateComparePeriods(
-      startDate as string, 
-      endDate as string, 
+      startDate as string,
+      endDate as string,
       compareType as string
     );
 
@@ -406,35 +410,36 @@ router.get('/efficiency-comparison', async (req: Request, res: Response) => {
         s.store_name,
         s.city,
         s.district,
-        ISNULL(s.store_area, 0) as store_area,
-        ISNULL(s.staff_count, 0) as staff_count,
+        ISNULL(s.area_size, 0) as store_area,
+        5 as staff_count,
         SUM(ISNULL(o.total_amount, 0)) as total_sales,
         COUNT(o.id) as total_orders
       FROM stores s
       LEFT JOIN orders o ON s.id = o.store_id 
         AND o.delflag = 0
-        AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate
+        AND o.created_at >= :startDate
+        AND o.created_at <= :endDate
       WHERE s.delflag = 0
-      GROUP BY s.id, s.store_name, s.city, s.district, s.store_area, s.staff_count
+      GROUP BY s.id, s.store_name, s.city, s.district, s.area_size
       ORDER BY total_sales DESC
     `;
 
     // 获取当前期间数据
     const currentData = await sequelize.query(efficiencyQuery, {
       type: QueryTypes.SELECT,
-      replacements: { 
+      replacements: {
         startDate: currentPeriod.startDate,
-        endDate: currentPeriod.endDate
-      }
+        endDate: currentPeriod.endDate,
+      },
     });
 
     // 获取对比期间数据
     const compareData = await sequelize.query(efficiencyQuery, {
       type: QueryTypes.SELECT,
-      replacements: { 
+      replacements: {
         startDate: comparePeriod.startDate,
-        endDate: comparePeriod.endDate
-      }
+        endDate: comparePeriod.endDate,
+      },
     });
 
     // 计算对比数据
@@ -447,16 +452,15 @@ router.get('/efficiency-comparison', async (req: Request, res: Response) => {
         currentPeriod,
         comparePeriod,
         efficiencyComparison,
-        summary
-      }
+        summary,
+      },
     });
-
   } catch (error) {
     console.error('获取运营效率对比数据失败:', error);
     res.status(500).json({
       success: false,
       error: '获取运营效率对比数据失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -469,25 +473,22 @@ router.get('/efficiency-comparison', async (req: Request, res: Response) => {
  */
 router.get('/hourly-comparison', async (req: Request, res: Response) => {
   try {
-    const { 
-      startDate, 
-      endDate, 
-      compareType = 'previous',
-      storeIds = '',
-      city = ''
-    } = req.query;
+    const { startDate, endDate, compareType = 'previous', storeIds = '', city = '' } = req.query;
 
     // 计算对比时间段
     const { currentPeriod, comparePeriod } = calculateComparePeriods(
       startDate as string,
-      endDate as string, 
+      endDate as string,
       compareType as string
     );
 
     // 构建门店过滤条件
     let storeFilter = '';
     if (storeIds) {
-      const storeIdList = (storeIds as string).split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      const storeIdList = (storeIds as string)
+        .split(',')
+        .map(id => parseInt(id.trim()))
+        .filter(id => !isNaN(id));
       if (storeIdList.length > 0) {
         storeFilter = `AND s.id IN (${storeIdList.join(',')})`;
       }
@@ -523,19 +524,19 @@ router.get('/hourly-comparison', async (req: Request, res: Response) => {
     // 获取当前期间数据
     const currentData = await sequelize.query(hourlyQuery, {
       type: QueryTypes.SELECT,
-      replacements: { 
+      replacements: {
         startDate: currentPeriod.startDate,
-        endDate: currentPeriod.endDate
-      }
+        endDate: currentPeriod.endDate,
+      },
     });
 
     // 获取对比期间数据
     const compareData = await sequelize.query(hourlyQuery, {
       type: QueryTypes.SELECT,
-      replacements: { 
+      replacements: {
         startDate: comparePeriod.startDate,
-        endDate: comparePeriod.endDate
-      }
+        endDate: comparePeriod.endDate,
+      },
     });
 
     // 处理小时级对比数据
@@ -548,29 +549,27 @@ router.get('/hourly-comparison', async (req: Request, res: Response) => {
         currentPeriod,
         comparePeriod,
         hourlyComparison,
-        summary
-      }
+        summary,
+      },
     });
-
   } catch (error) {
     console.error('获取小时级对比数据失败:', error);
     res.status(500).json({
       success: false,
       error: '获取小时级对比数据失败',
-      details: error instanceof Error ? error.message : '未知错误'
+      details: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
 
 // ==================== 辅助函数 ====================
 
-
 /**
  * 计算城市对比数据
  */
 function calculateCityComparison(currentData: any[], compareData: any[]) {
   const cityMap = new Map();
-  
+
   // 处理当前期间数据
   currentData.forEach(city => {
     cityMap.set(city.city, {
@@ -581,11 +580,11 @@ function calculateCityComparison(currentData: any[], compareData: any[]) {
         totalOrders: parseInt(city.total_orders),
         totalCustomers: parseInt(city.total_customers),
         avgOrderValue: parseFloat(city.avg_order_value),
-        salesPerStore: parseFloat(city.sales_per_store)
-      }
+        salesPerStore: parseFloat(city.sales_per_store),
+      },
     });
   });
-  
+
   // 处理对比期间数据
   compareData.forEach(city => {
     const existing = cityMap.get(city.city) || { city: city.city, current: {} };
@@ -597,22 +596,24 @@ function calculateCityComparison(currentData: any[], compareData: any[]) {
         totalOrders: parseInt(city.total_orders),
         totalCustomers: parseInt(city.total_customers),
         avgOrderValue: parseFloat(city.avg_order_value),
-        salesPerStore: parseFloat(city.sales_per_store)
-      }
+        salesPerStore: parseFloat(city.sales_per_store),
+      },
     });
   });
-  
+
   // 计算对比结果
   const result = Array.from(cityMap.values()).map(city => {
     const current = city.current || {};
     const compare = city.compare || {};
-    
+
     const salesChange = (current.totalSales || 0) - (compare.totalSales || 0);
-    const salesChangePercent = compare.totalSales > 0 ? (salesChange / compare.totalSales) * 100 : 0;
-    
+    const salesChangePercent =
+      compare.totalSales > 0 ? (salesChange / compare.totalSales) * 100 : 0;
+
     const ordersChange = (current.totalOrders || 0) - (compare.totalOrders || 0);
-    const ordersChangePercent = compare.totalOrders > 0 ? (ordersChange / compare.totalOrders) * 100 : 0;
-    
+    const ordersChangePercent =
+      compare.totalOrders > 0 ? (ordersChange / compare.totalOrders) * 100 : 0;
+
     return {
       ...city,
       comparison: {
@@ -620,11 +621,11 @@ function calculateCityComparison(currentData: any[], compareData: any[]) {
         salesChangePercent,
         ordersChange,
         ordersChangePercent,
-        trend: salesChangePercent > 5 ? 'up' : salesChangePercent < -5 ? 'down' : 'stable'
-      }
+        trend: salesChangePercent > 5 ? 'up' : salesChangePercent < -5 ? 'down' : 'stable',
+      },
     };
   });
-  
+
   return result.sort((a, b) => (b.current?.totalSales || 0) - (a.current?.totalSales || 0));
 }
 
@@ -633,12 +634,12 @@ function calculateCityComparison(currentData: any[], compareData: any[]) {
  */
 function calculateStoreComparison(currentData: any[], compareData: any[]) {
   const storeMap = new Map();
-  
+
   // 处理当前期间数据
   currentData.forEach(store => {
     const totalSales = parseFloat(store.total_sales || 0);
     const totalOrders = parseInt(store.total_orders || 0);
-    
+
     storeMap.set(store.store_id, {
       storeId: store.store_id,
       storeName: store.store_name,
@@ -652,26 +653,26 @@ function calculateStoreComparison(currentData: any[], compareData: any[]) {
         totalCustomers: parseInt(store.total_customers || 0),
         avgOrderValue: totalOrders > 0 ? totalSales / totalOrders : 0,
         salesPerSqm: 0, // 暂时设为0，因为没有面积数据
-        salesPerStaff: 0 // 暂时设为0，因为没有员工数据
-      }
+        salesPerStaff: 0, // 暂时设为0，因为没有员工数据
+      },
     });
   });
-  
+
   // 处理对比期间数据
   compareData.forEach(store => {
-    const existing = storeMap.get(store.store_id) || { 
-      storeId: store.store_id, 
+    const existing = storeMap.get(store.store_id) || {
+      storeId: store.store_id,
       storeName: store.store_name,
       city: store.city,
       district: store.district,
       storeArea: 0,
       staffCount: 0,
-      current: {} 
+      current: {},
     };
-    
+
     const totalSales = parseFloat(store.total_sales || 0);
     const totalOrders = parseInt(store.total_orders || 0);
-    
+
     storeMap.set(store.store_id, {
       ...existing,
       compare: {
@@ -680,22 +681,24 @@ function calculateStoreComparison(currentData: any[], compareData: any[]) {
         totalCustomers: parseInt(store.total_customers || 0),
         avgOrderValue: totalOrders > 0 ? totalSales / totalOrders : 0,
         salesPerSqm: 0, // 暂时设为0，因为没有面积数据
-        salesPerStaff: 0 // 暂时设为0，因为没有员工数据
-      }
+        salesPerStaff: 0, // 暂时设为0，因为没有员工数据
+      },
     });
   });
-  
+
   // 计算对比结果
   const result = Array.from(storeMap.values()).map(store => {
     const current = store.current || {};
     const compare = store.compare || {};
-    
+
     const salesChange = (current.totalSales || 0) - (compare.totalSales || 0);
-    const salesChangePercent = compare.totalSales > 0 ? (salesChange / compare.totalSales) * 100 : 0;
-    
+    const salesChangePercent =
+      compare.totalSales > 0 ? (salesChange / compare.totalSales) * 100 : 0;
+
     const efficiencyChange = (current.salesPerSqm || 0) - (compare.salesPerSqm || 0);
-    const efficiencyChangePercent = compare.salesPerSqm > 0 ? (efficiencyChange / compare.salesPerSqm) * 100 : 0;
-    
+    const efficiencyChangePercent =
+      compare.salesPerSqm > 0 ? (efficiencyChange / compare.salesPerSqm) * 100 : 0;
+
     return {
       ...store,
       comparison: {
@@ -703,11 +706,11 @@ function calculateStoreComparison(currentData: any[], compareData: any[]) {
         salesChangePercent,
         efficiencyChange,
         efficiencyChangePercent,
-        trend: salesChangePercent > 5 ? 'up' : salesChangePercent < -5 ? 'down' : 'stable'
-      }
+        trend: salesChangePercent > 5 ? 'up' : salesChangePercent < -5 ? 'down' : 'stable',
+      },
     };
   });
-  
+
   return result.sort((a, b) => (b.current?.totalSales || 0) - (a.current?.totalSales || 0));
 }
 
@@ -716,32 +719,32 @@ function calculateStoreComparison(currentData: any[], compareData: any[]) {
  */
 function calculateProductComparison(currentData: any[], compareData: any[]) {
   const productMap = new Map();
-  
+
   // 处理当前期间数据
   currentData.forEach(product => {
     const totalSales = parseFloat(product.total_sales || 0);
     const totalQuantity = parseInt(product.total_quantity || 0);
-    
+
     productMap.set(product.product_name, {
       productName: product.product_name,
-      productCategory: product.product_category,
+      productCategory: '热狗类', // 默认分类
       current: {
         storeCount: parseInt(product.store_count || 0),
         totalSales: totalSales,
         totalQuantity: totalQuantity,
         avgUnitPrice: totalQuantity > 0 ? totalSales / totalQuantity : 0,
         orderCount: parseInt(product.order_count || 0),
-        customerCount: parseInt(product.customer_count || 0)
-      }
+        customerCount: parseInt(product.customer_count || 0),
+      },
     });
   });
-  
+
   // 处理对比期间数据
   compareData.forEach(product => {
-    const existing = productMap.get(product.product_name) || { 
+    const existing = productMap.get(product.product_name) || {
       productName: product.product_name,
-      productCategory: product.product_category,
-      current: {} 
+      productCategory: '热狗类', // 默认分类
+      current: {},
     };
     productMap.set(product.product_name, {
       ...existing,
@@ -749,24 +752,29 @@ function calculateProductComparison(currentData: any[], compareData: any[]) {
         storeCount: parseInt(product.store_count),
         totalSales: parseFloat(product.total_sales),
         totalQuantity: parseInt(product.total_quantity),
-        avgUnitPrice: product.total_quantity > 0 ? parseFloat(product.total_sales) / parseInt(product.total_quantity) : 0,
+        avgUnitPrice:
+          product.total_quantity > 0
+            ? parseFloat(product.total_sales) / parseInt(product.total_quantity)
+            : 0,
         orderCount: parseInt(product.order_count),
-        customerCount: 0  // 暂时设为0，因为SQL查询中没有这个字段
-      }
+        customerCount: 0, // 暂时设为0，因为SQL查询中没有这个字段
+      },
     });
   });
-  
+
   // 计算对比结果
   const result = Array.from(productMap.values()).map(product => {
     const current = product.current || {};
     const compare = product.compare || {};
-    
+
     const salesChange = (current.totalSales || 0) - (compare.totalSales || 0);
-    const salesChangePercent = compare.totalSales > 0 ? (salesChange / compare.totalSales) * 100 : 0;
-    
+    const salesChangePercent =
+      compare.totalSales > 0 ? (salesChange / compare.totalSales) * 100 : 0;
+
     const quantityChange = (current.totalQuantity || 0) - (compare.totalQuantity || 0);
-    const quantityChangePercent = compare.totalQuantity > 0 ? (quantityChange / compare.totalQuantity) * 100 : 0;
-    
+    const quantityChangePercent =
+      compare.totalQuantity > 0 ? (quantityChange / compare.totalQuantity) * 100 : 0;
+
     return {
       ...product,
       comparison: {
@@ -774,11 +782,11 @@ function calculateProductComparison(currentData: any[], compareData: any[]) {
         salesChangePercent,
         quantityChange,
         quantityChangePercent,
-        trend: salesChangePercent > 5 ? 'up' : salesChangePercent < -5 ? 'down' : 'stable'
-      }
+        trend: salesChangePercent > 5 ? 'up' : salesChangePercent < -5 ? 'down' : 'stable',
+      },
     };
   });
-  
+
   return result.sort((a, b) => (b.current?.totalSales || 0) - (a.current?.totalSales || 0));
 }
 
@@ -787,7 +795,7 @@ function calculateProductComparison(currentData: any[], compareData: any[]) {
  */
 function calculateEfficiencyComparison(currentData: any[], compareData: any[]) {
   const storeMap = new Map();
-  
+
   // 处理当前期间数据
   currentData.forEach(store => {
     storeMap.set(store.store_id, {
@@ -796,57 +804,65 @@ function calculateEfficiencyComparison(currentData: any[], compareData: any[]) {
       city: store.city,
       storeArea: parseFloat(store.store_area || 0),
       staffCount: parseInt(store.staff_count || 0),
-      rentCost: parseFloat(store.rent_cost || 0),
+      rentCost: 0, // 默认值，因为SQL查询中没有这个字段
       current: {
         totalSales: parseFloat(store.total_sales),
         totalOrders: parseInt(store.total_orders),
-        totalCustomers: 0,  // SQL查询中没有这个字段
-        salesPerSqm: store.store_area > 0 ? parseFloat(store.total_sales) / parseFloat(store.store_area) : 0,
-        salesPerStaff: store.staff_count > 0 ? parseFloat(store.total_sales) / parseInt(store.staff_count) : 0,
-        avgOrderValue: store.total_orders > 0 ? parseFloat(store.total_sales) / parseInt(store.total_orders) : 0,
-        dailyOrders: 0,  // SQL查询中没有这个字段
-        rentReturnRate: 0  // SQL查询中没有这个字段
-      }
+        totalCustomers: 0, // SQL查询中没有这个字段
+        salesPerSqm:
+          store.store_area > 0 ? parseFloat(store.total_sales) / parseFloat(store.store_area) : 0,
+        salesPerStaff:
+          store.staff_count > 0 ? parseFloat(store.total_sales) / parseInt(store.staff_count) : 0,
+        avgOrderValue:
+          store.total_orders > 0 ? parseFloat(store.total_sales) / parseInt(store.total_orders) : 0,
+        dailyOrders: 0, // SQL查询中没有这个字段
+        rentReturnRate: 0, // SQL查询中没有这个字段
+      },
     });
   });
-  
+
   // 处理对比期间数据
   compareData.forEach(store => {
-    const existing = storeMap.get(store.store_id) || { 
-      storeId: store.store_id, 
+    const existing = storeMap.get(store.store_id) || {
+      storeId: store.store_id,
       storeName: store.store_name,
       city: store.city,
       storeArea: parseFloat(store.store_area || 0),
       staffCount: parseInt(store.staff_count || 0),
-      rentCost: parseFloat(store.rent_cost || 0),
-      current: {} 
+      rentCost: 0, // 默认值，因为SQL查询中没有这个字段
+      current: {},
     };
     storeMap.set(store.store_id, {
       ...existing,
       compare: {
         totalSales: parseFloat(store.total_sales),
         totalOrders: parseInt(store.total_orders),
-        totalCustomers: 0,  // SQL查询中没有这个字段
-        salesPerSqm: store.store_area > 0 ? parseFloat(store.total_sales) / parseFloat(store.store_area) : 0,
-        salesPerStaff: store.staff_count > 0 ? parseFloat(store.total_sales) / parseInt(store.staff_count) : 0,
-        avgOrderValue: store.total_orders > 0 ? parseFloat(store.total_sales) / parseInt(store.total_orders) : 0,
-        dailyOrders: 0,  // SQL查询中没有这个字段
-        rentReturnRate: 0  // SQL查询中没有这个字段
-      }
+        totalCustomers: 0, // SQL查询中没有这个字段
+        salesPerSqm:
+          store.store_area > 0 ? parseFloat(store.total_sales) / parseFloat(store.store_area) : 0,
+        salesPerStaff:
+          store.staff_count > 0 ? parseFloat(store.total_sales) / parseInt(store.staff_count) : 0,
+        avgOrderValue:
+          store.total_orders > 0 ? parseFloat(store.total_sales) / parseInt(store.total_orders) : 0,
+        dailyOrders: 0, // SQL查询中没有这个字段
+        rentReturnRate: 0, // SQL查询中没有这个字段
+      },
     });
   });
-  
+
   // 计算对比结果
   const result = Array.from(storeMap.values()).map(store => {
     const current = store.current || {};
     const compare = store.compare || {};
-    
+
     const salesChange = (current.totalSales || 0) - (compare.totalSales || 0);
-    const salesChangePercent = compare.totalSales > 0 ? (salesChange / compare.totalSales) * 100 : 0;
-    
+    const salesChangePercent =
+      compare.totalSales > 0 ? (salesChange / compare.totalSales) * 100 : 0;
+
     const efficiencyChange = (current.salesPerSqm || 0) - (compare.salesPerSqm || 0);
-    const efficiencyChangePercent = compare.salesPerSqm > 0 ? (efficiencyChange / compare.salesPerSqm) * 100 : 0;
-    
+    const efficiencyChangePercent =
+      compare.salesPerSqm > 0 ? (efficiencyChange / compare.salesPerSqm) * 100 : 0;
+
     return {
       ...store,
       comparison: {
@@ -854,72 +870,96 @@ function calculateEfficiencyComparison(currentData: any[], compareData: any[]) {
         salesChangePercent,
         efficiencyChange,
         efficiencyChangePercent,
-        trend: salesChangePercent > 5 ? 'up' : salesChangePercent < -5 ? 'down' : 'stable'
-      }
+        trend: salesChangePercent > 5 ? 'up' : salesChangePercent < -5 ? 'down' : 'stable',
+      },
     };
   });
-  
+
   return result.sort((a, b) => (b.current?.salesPerSqm || 0) - (a.current?.salesPerSqm || 0));
 }
-
 
 // 汇总计算函数
 function calculateCitySummary(cityComparison: any[]) {
   const totalSales = cityComparison.reduce((sum, city) => sum + (city.current?.totalSales || 0), 0);
-  const totalOrders = cityComparison.reduce((sum, city) => sum + (city.current?.totalOrders || 0), 0);
-  const avgSalesChange = cityComparison.reduce((sum, city) => sum + (city.comparison?.salesChangePercent || 0), 0) / cityComparison.length;
-  
+  const totalOrders = cityComparison.reduce(
+    (sum, city) => sum + (city.current?.totalOrders || 0),
+    0
+  );
+  const avgSalesChange =
+    cityComparison.reduce((sum, city) => sum + (city.comparison?.salesChangePercent || 0), 0) /
+    cityComparison.length;
+
   return {
     totalCities: cityComparison.length,
     totalSales,
     totalOrders,
     avgSalesChange,
     topCity: cityComparison[0],
-    bottomCity: cityComparison[cityComparison.length - 1]
+    bottomCity: cityComparison[cityComparison.length - 1],
   };
 }
 
 function calculateStoreSummary(storeComparison: any[]) {
-  const totalSales = storeComparison.reduce((sum, store) => sum + (store.current?.totalSales || 0), 0);
+  const totalSales = storeComparison.reduce(
+    (sum, store) => sum + (store.current?.totalSales || 0),
+    0
+  );
   const totalStores = storeComparison.length;
   const avgSalesPerStore = totalSales / totalStores;
-  const avgEfficiencyChange = storeComparison.reduce((sum, store) => sum + (store.comparison?.efficiencyChangePercent || 0), 0) / totalStores;
-  
+  const avgEfficiencyChange =
+    storeComparison.reduce(
+      (sum, store) => sum + (store.comparison?.efficiencyChangePercent || 0),
+      0
+    ) / totalStores;
+
   return {
     totalStores,
     totalSales,
     avgSalesPerStore,
     avgEfficiencyChange,
     topStore: storeComparison[0],
-    bottomStore: storeComparison[storeComparison.length - 1]
+    bottomStore: storeComparison[storeComparison.length - 1],
   };
 }
 
 function calculateProductSummary(productComparison: any[]) {
-  const totalSales = productComparison.reduce((sum, product) => sum + (product.current?.totalSales || 0), 0);
+  const totalSales = productComparison.reduce(
+    (sum, product) => sum + (product.current?.totalSales || 0),
+    0
+  );
   const totalProducts = productComparison.length;
-  const avgSalesChange = productComparison.reduce((sum, product) => sum + (product.comparison?.salesChangePercent || 0), 0) / totalProducts;
-  
+  const avgSalesChange =
+    productComparison.reduce(
+      (sum, product) => sum + (product.comparison?.salesChangePercent || 0),
+      0
+    ) / totalProducts;
+
   return {
     totalProducts,
     totalSales,
     avgSalesChange,
     topProduct: productComparison[0],
-    bottomProduct: productComparison[productComparison.length - 1]
+    bottomProduct: productComparison[productComparison.length - 1],
   };
 }
 
 function calculateEfficiencySummary(efficiencyComparison: any[]) {
   const totalStores = efficiencyComparison.length;
-  const avgSalesPerSqm = efficiencyComparison.reduce((sum, store) => sum + (store.current?.salesPerSqm || 0), 0) / totalStores;
-  const avgEfficiencyChange = efficiencyComparison.reduce((sum, store) => sum + (store.comparison?.efficiencyChangePercent || 0), 0) / totalStores;
-  
+  const avgSalesPerSqm =
+    efficiencyComparison.reduce((sum, store) => sum + (store.current?.salesPerSqm || 0), 0) /
+    totalStores;
+  const avgEfficiencyChange =
+    efficiencyComparison.reduce(
+      (sum, store) => sum + (store.comparison?.efficiencyChangePercent || 0),
+      0
+    ) / totalStores;
+
   return {
     totalStores,
     avgSalesPerSqm,
     avgEfficiencyChange,
     topEfficiencyStore: efficiencyComparison[0],
-    bottomEfficiencyStore: efficiencyComparison[efficiencyComparison.length - 1]
+    bottomEfficiencyStore: efficiencyComparison[efficiencyComparison.length - 1],
   };
 }
 
@@ -928,16 +968,12 @@ function calculateEfficiencySummary(efficiencyComparison: any[]) {
 // 测试API - 逐步调试概览功能
 router.get('/overview-test', async (req: Request, res: Response) => {
   try {
-    const { 
-      startDate, 
-      endDate, 
-      compareType = 'previous'
-    } = req.query;
+    const { startDate, endDate, compareType = 'previous' } = req.query;
 
     // 计算对比时间段
     const { currentPeriod, comparePeriod } = calculateComparePeriods(
       startDate as string,
-      endDate as string, 
+      endDate as string,
       compareType as string
     );
 
@@ -950,17 +986,16 @@ router.get('/overview-test', async (req: Request, res: Response) => {
         currentPeriod,
         comparePeriod,
         cityData,
-        message: "测试模式：只返回城市数据"
-      }
+        message: '测试模式：只返回城市数据',
+      },
     });
-
   } catch (error) {
     console.error('测试概览API失败:', error);
     res.status(500).json({
       success: false,
       error: '测试概览API失败',
       details: error instanceof Error ? error.message : '未知错误',
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined,
     });
   }
 });
@@ -972,18 +1007,18 @@ router.get('/overview-test', async (req: Request, res: Response) => {
  */
 router.get('/overview', async (req: Request, res: Response) => {
   try {
-    const { 
-      startDate, 
-      endDate, 
+    const {
+      startDate,
+      endDate,
       compareType = 'previous',
       dimensions = ['city', 'store', 'product'],
-      timeRange = 'week'
+      timeRange = 'week',
     } = req.query;
 
     // 计算对比时间段
     const { currentPeriod, comparePeriod } = calculateComparePeriods(
       startDate as string,
-      endDate as string, 
+      endDate as string,
       compareType as string
     );
 
@@ -992,7 +1027,7 @@ router.get('/overview', async (req: Request, res: Response) => {
       getCityComparisonData(currentPeriod, comparePeriod),
       getStoreComparisonData(currentPeriod, comparePeriod),
       getProductComparisonData(currentPeriod, comparePeriod),
-      getTimeComparisonData(currentPeriod, comparePeriod, timeRange as string)
+      getTimeComparisonData(currentPeriod, comparePeriod, timeRange as string),
     ]);
 
     res.json({
@@ -1000,30 +1035,29 @@ router.get('/overview', async (req: Request, res: Response) => {
       data: {
         periods: {
           current: currentPeriod,
-          compare: comparePeriod
+          compare: comparePeriod,
         },
         dimensions: {
           city: cityData,
           store: storeData,
           product: productData,
-          time: timeData
+          time: timeData,
         },
         summary: {
           totalCities: cityData.length,
           totalStores: storeData.length,
           totalProducts: productData.length,
-          avgGrowthRate: calculateAvgGrowthRate(cityData, storeData, productData)
-        }
-      }
+          avgGrowthRate: calculateAvgGrowthRate(cityData, storeData, productData),
+        },
+      },
     });
-
   } catch (error) {
     console.error('获取多维度对比数据失败:', error);
     res.status(500).json({
       success: false,
       error: '获取多维度对比数据失败',
       details: error instanceof Error ? error.message : '未知错误',
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined,
     });
   }
 });
@@ -1059,16 +1093,16 @@ async function getCityComparisonData(currentPeriod: any, comparePeriod: any) {
       type: QueryTypes.SELECT,
       replacements: {
         startDate: currentPeriod.startDate,
-        endDate: currentPeriod.endDate
-      }
+        endDate: currentPeriod.endDate,
+      },
     }),
     sequelize.query(query, {
       type: QueryTypes.SELECT,
       replacements: {
         startDate: comparePeriod.startDate,
-        endDate: comparePeriod.endDate
-      }
-    })
+        endDate: comparePeriod.endDate,
+      },
+    }),
   ]);
 
   return calculateComparisonMetrics(currentData, compareData, 'city');
@@ -1102,16 +1136,16 @@ async function getStoreComparisonData(currentPeriod: any, comparePeriod: any) {
       type: QueryTypes.SELECT,
       replacements: {
         startDate: currentPeriod.startDate,
-        endDate: currentPeriod.endDate
-      }
+        endDate: currentPeriod.endDate,
+      },
     }),
     sequelize.query(query, {
       type: QueryTypes.SELECT,
       replacements: {
         startDate: comparePeriod.startDate,
-        endDate: comparePeriod.endDate
-      }
-    })
+        endDate: comparePeriod.endDate,
+      },
+    }),
   ]);
 
   return calculateComparisonMetrics(currentData, compareData, 'store');
@@ -1124,7 +1158,6 @@ async function getProductComparisonData(currentPeriod: any, comparePeriod: any) 
   const query = `
     SELECT 
       oi.product_name,
-      oi.product_category,
       COUNT(DISTINCT o.store_id) as store_count,
       SUM(ISNULL(oi.total_price, 0)) as total_sales,
       SUM(ISNULL(oi.quantity, 0)) as total_quantity,
@@ -1133,8 +1166,9 @@ async function getProductComparisonData(currentPeriod: any, comparePeriod: any) 
     FROM order_items oi
     INNER JOIN orders o ON oi.order_id = o.id
     WHERE o.delflag = 0
-      AND CAST(o.created_at AS DATE) BETWEEN :startDate AND :endDate
-    GROUP BY oi.product_name, oi.product_category
+      AND o.created_at >= :startDate
+      AND o.created_at <= :endDate
+    GROUP BY oi.product_name
     ORDER BY total_sales DESC
   `;
 
@@ -1143,16 +1177,16 @@ async function getProductComparisonData(currentPeriod: any, comparePeriod: any) 
       type: QueryTypes.SELECT,
       replacements: {
         startDate: currentPeriod.startDate,
-        endDate: currentPeriod.endDate
-      }
+        endDate: currentPeriod.endDate,
+      },
     }),
     sequelize.query(query, {
       type: QueryTypes.SELECT,
       replacements: {
         startDate: comparePeriod.startDate,
-        endDate: comparePeriod.endDate
-      }
-    })
+        endDate: comparePeriod.endDate,
+      },
+    }),
   ]);
 
   return calculateComparisonMetrics(currentData, compareData, 'product');
@@ -1162,9 +1196,12 @@ async function getProductComparisonData(currentPeriod: any, comparePeriod: any) 
  * 时间维度对比分析（支持历史对比和未来预测）
  */
 async function getTimeComparisonData(currentPeriod: any, comparePeriod: any, timeRange: string) {
-  const timeGroupBy = timeRange === 'day' ? 'CAST(o.created_at AS DATE)' : 
-                     timeRange === 'week' ? 'DATEPART(week, o.created_at)' :
-                     'DATEPART(month, o.created_at)';
+  const timeGroupBy =
+    timeRange === 'day'
+      ? 'CAST(o.created_at AS DATE)'
+      : timeRange === 'week'
+        ? 'DATEPART(week, o.created_at)'
+        : 'DATEPART(month, o.created_at)';
 
   const query = `
     SELECT 
@@ -1185,16 +1222,16 @@ async function getTimeComparisonData(currentPeriod: any, comparePeriod: any, tim
       type: QueryTypes.SELECT,
       replacements: {
         startDate: currentPeriod.startDate,
-        endDate: currentPeriod.endDate
-      }
+        endDate: currentPeriod.endDate,
+      },
     }),
     sequelize.query(query, {
       type: QueryTypes.SELECT,
       replacements: {
         startDate: comparePeriod.startDate,
-        endDate: comparePeriod.endDate
-      }
-    })
+        endDate: comparePeriod.endDate,
+      },
+    }),
   ]);
 
   return calculateTimeComparisonMetrics(currentData, compareData, timeRange);
@@ -1204,9 +1241,9 @@ async function getTimeComparisonData(currentPeriod: any, comparePeriod: any, tim
  * 计算对比指标
  */
 function calculateComparisonMetrics(currentData: any[], compareData: any[], dimension: string) {
-  const keyField = dimension === 'city' ? 'city' : 
-                  dimension === 'store' ? 'store_id' : 'product_name';
-  
+  const keyField =
+    dimension === 'city' ? 'city' : dimension === 'store' ? 'store_id' : 'product_name';
+
   const compareMap = new Map();
   compareData.forEach((item: any) => {
     compareMap.set(item[keyField], item);
@@ -1214,7 +1251,7 @@ function calculateComparisonMetrics(currentData: any[], compareData: any[], dime
 
   return currentData.map((current: any) => {
     const compare = compareMap.get(current[keyField]) || {};
-    
+
     return {
       ...current,
       comparison: {
@@ -1222,8 +1259,8 @@ function calculateComparisonMetrics(currentData: any[], compareData: any[], dime
         ordersChange: calculateChange(current.total_orders, compare.total_orders),
         customersChange: calculateChange(current.total_customers, compare.total_customers),
         avgOrderValueChange: calculateChange(current.avg_order_value, compare.avg_order_value),
-        trend: getTrend(current.total_sales, compare.total_sales)
-      }
+        trend: getTrend(current.total_sales, compare.total_sales),
+      },
     };
   });
 }
@@ -1239,7 +1276,7 @@ function calculateTimeComparisonMetrics(currentData: any[], compareData: any[], 
 
   return currentData.map((current: any) => {
     const compare = compareMap.get(current.time_period) || {};
-    
+
     return {
       ...current,
       comparison: {
@@ -1247,8 +1284,8 @@ function calculateTimeComparisonMetrics(currentData: any[], compareData: any[], 
         ordersChange: calculateChange(current.total_orders, compare.total_orders),
         storesChange: calculateChange(current.active_stores, compare.active_stores),
         customersChange: calculateChange(current.unique_customers, compare.unique_customers),
-        trend: getTrend(current.total_sales, compare.total_sales)
-      }
+        trend: getTrend(current.total_sales, compare.total_sales),
+      },
     };
   });
 }
@@ -1259,7 +1296,7 @@ function calculateTimeComparisonMetrics(currentData: any[], compareData: any[], 
 function calculateChange(current: number, compare: number): number {
   const currentVal = current || 0;
   const compareVal = compare || 0;
-  
+
   if (compareVal === 0) return currentVal > 0 ? 100 : 0;
   return ((currentVal - compareVal) / compareVal) * 100;
 }
@@ -1281,11 +1318,12 @@ function calculateAvgGrowthRate(cityData: any[], storeData: any[], productData: 
   const allChanges = [
     ...cityData.map(item => item.comparison?.salesChange || 0),
     ...storeData.map(item => item.comparison?.salesChange || 0),
-    ...productData.map(item => item.comparison?.salesChange || 0)
+    ...productData.map(item => item.comparison?.salesChange || 0),
   ].filter(change => !isNaN(change));
-  
-  return allChanges.length > 0 ? 
-    allChanges.reduce((sum, change) => sum + change, 0) / allChanges.length : 0;
+
+  return allChanges.length > 0
+    ? allChanges.reduce((sum, change) => sum + change, 0) / allChanges.length
+    : 0;
 }
 
 /**
@@ -1295,10 +1333,10 @@ function calculateComparePeriods(startDate: string, endDate: string, compareType
   const start = new Date(startDate);
   const end = new Date(endDate);
   const duration = end.getTime() - start.getTime();
-  
+
   let compareStart: Date;
   let compareEnd: Date;
-  
+
   switch (compareType) {
     case 'previous':
       compareEnd = new Date(start.getTime() - 1);
@@ -1316,18 +1354,18 @@ function calculateComparePeriods(startDate: string, endDate: string, compareType
       compareEnd = new Date(start.getTime() - 1);
       compareStart = new Date(compareEnd.getTime() - duration);
   }
-  
+
   return {
     currentPeriod: {
       startDate: startDate,
       endDate: endDate,
-      type: 'current'
+      type: 'current',
     },
     comparePeriod: {
       startDate: compareStart.toISOString().split('T')[0],
       endDate: compareEnd.toISOString().split('T')[0],
-      type: compareType
-    }
+      type: compareType,
+    },
   };
 }
 
@@ -1336,13 +1374,13 @@ function calculateComparePeriods(startDate: string, endDate: string, compareType
  */
 function calculateHourlyComparison(currentData: any[], compareData: any[]) {
   const hourlyMap = new Map();
-  
+
   // 处理当前期间数据
   currentData.forEach(item => {
     const hour = item.hour;
     const storeId = item.store_id;
     const key = `${hour}_${storeId}`;
-    
+
     if (!hourlyMap.has(key)) {
       hourlyMap.set(key, {
         hour: hour,
@@ -1352,30 +1390,30 @@ function calculateHourlyComparison(currentData: any[], compareData: any[]) {
         current: {
           totalSales: 0,
           totalOrders: 0,
-          uniqueCustomers: 0
+          uniqueCustomers: 0,
         },
         compare: {
           totalSales: 0,
           totalOrders: 0,
-          uniqueCustomers: 0
-        }
+          uniqueCustomers: 0,
+        },
       });
     }
-    
+
     const existing = hourlyMap.get(key);
     existing.current = {
       totalSales: parseFloat(item.total_sales || 0),
       totalOrders: parseInt(item.total_orders || 0),
-      uniqueCustomers: parseInt(item.unique_customers || 0)
+      uniqueCustomers: parseInt(item.unique_customers || 0),
     };
   });
-  
+
   // 处理对比期间数据
   compareData.forEach(item => {
     const hour = item.hour;
     const storeId = item.store_id;
     const key = `${hour}_${storeId}`;
-    
+
     if (!hourlyMap.has(key)) {
       hourlyMap.set(key, {
         hour: hour,
@@ -1385,29 +1423,29 @@ function calculateHourlyComparison(currentData: any[], compareData: any[]) {
         current: {
           totalSales: 0,
           totalOrders: 0,
-          uniqueCustomers: 0
+          uniqueCustomers: 0,
         },
         compare: {
           totalSales: 0,
           totalOrders: 0,
-          uniqueCustomers: 0
-        }
+          uniqueCustomers: 0,
+        },
       });
     }
-    
+
     const existing = hourlyMap.get(key);
     existing.compare = {
       totalSales: parseFloat(item.total_sales || 0),
       totalOrders: parseInt(item.total_orders || 0),
-      uniqueCustomers: parseInt(item.unique_customers || 0)
+      uniqueCustomers: parseInt(item.unique_customers || 0),
     };
   });
-  
+
   // 计算对比结果
   const result = Array.from(hourlyMap.values()).map(item => {
     const current = item.current;
     const compare = item.compare;
-    
+
     return {
       hour: item.hour,
       storeId: item.storeId,
@@ -1422,12 +1460,14 @@ function calculateHourlyComparison(currentData: any[], compareData: any[]) {
         ordersChangePercent: calculateChange(current.totalOrders, compare.totalOrders),
         customersChange: calculateChange(current.uniqueCustomers, compare.uniqueCustomers),
         customersChangePercent: calculateChange(current.uniqueCustomers, compare.uniqueCustomers),
-        trend: getTrend(current.totalSales, compare.totalSales)
-      }
+        trend: getTrend(current.totalSales, compare.totalSales),
+      },
     };
   });
-  
-  return result.sort((a, b) => a.hour - b.hour || (b.current?.totalSales || 0) - (a.current?.totalSales || 0));
+
+  return result.sort(
+    (a, b) => a.hour - b.hour || (b.current?.totalSales || 0) - (a.current?.totalSales || 0)
+  );
 }
 
 /**
@@ -1435,7 +1475,7 @@ function calculateHourlyComparison(currentData: any[], compareData: any[]) {
  */
 function calculateHourlySummary(hourlyComparison: any[]) {
   const hourlyStats = new Map();
-  
+
   // 按小时汇总数据
   hourlyComparison.forEach(item => {
     const hour = item.hour;
@@ -1443,10 +1483,10 @@ function calculateHourlySummary(hourlyComparison: any[]) {
       hourlyStats.set(hour, {
         hour: hour,
         current: { totalSales: 0, totalOrders: 0, uniqueCustomers: 0 },
-        compare: { totalSales: 0, totalOrders: 0, uniqueCustomers: 0 }
+        compare: { totalSales: 0, totalOrders: 0, uniqueCustomers: 0 },
       });
     }
-    
+
     const stats = hourlyStats.get(hour);
     stats.current.totalSales += item.current.totalSales;
     stats.current.totalOrders += item.current.totalOrders;
@@ -1455,7 +1495,7 @@ function calculateHourlySummary(hourlyComparison: any[]) {
     stats.compare.totalOrders += item.compare.totalOrders;
     stats.compare.uniqueCustomers += item.compare.uniqueCustomers;
   });
-  
+
   const hourlySummary = Array.from(hourlyStats.values()).map(stats => ({
     ...stats,
     comparison: {
@@ -1463,31 +1503,99 @@ function calculateHourlySummary(hourlyComparison: any[]) {
       salesChangePercent: calculateChange(stats.current.totalSales, stats.compare.totalSales),
       ordersChange: calculateChange(stats.current.totalOrders, stats.compare.totalOrders),
       ordersChangePercent: calculateChange(stats.current.totalOrders, stats.compare.totalOrders),
-      customersChange: calculateChange(stats.current.uniqueCustomers, stats.compare.uniqueCustomers),
-      customersChangePercent: calculateChange(stats.current.uniqueCustomers, stats.compare.uniqueCustomers),
-      trend: getTrend(stats.current.totalSales, stats.compare.totalSales)
-    }
+      customersChange: calculateChange(
+        stats.current.uniqueCustomers,
+        stats.compare.uniqueCustomers
+      ),
+      customersChangePercent: calculateChange(
+        stats.current.uniqueCustomers,
+        stats.compare.uniqueCustomers
+      ),
+      trend: getTrend(stats.current.totalSales, stats.compare.totalSales),
+    },
   }));
-  
+
   // 找出最佳和最差时段
-  const bestHour = hourlySummary.reduce((best, current) => 
+  const bestHour = hourlySummary.reduce((best, current) =>
     current.current.totalSales > best.current.totalSales ? current : best
   );
-  const worstHour = hourlySummary.reduce((worst, current) => 
+  const worstHour = hourlySummary.reduce((worst, current) =>
     current.current.totalSales < worst.current.totalSales ? current : worst
   );
-  
+
   return {
     hourlySummary: hourlySummary.sort((a, b) => a.hour - b.hour),
     bestHour,
     worstHour,
     totalHours: hourlySummary.length,
-    avgSalesPerHour: hourlySummary.reduce((sum, h) => sum + h.current.totalSales, 0) / hourlySummary.length,
+    avgSalesPerHour:
+      hourlySummary.reduce((sum, h) => sum + h.current.totalSales, 0) / hourlySummary.length,
     peakHours: hourlySummary
       .filter(h => h.current.totalSales > 0)
       .sort((a, b) => b.current.totalSales - a.current.totalSales)
-      .slice(0, 3)
+      .slice(0, 3),
   };
 }
+
+// ==================== 数据库表结构检查 ====================
+
+/**
+ * 数据库表结构检查API
+ * GET /api/sales-comparison/db-check
+ */
+router.get('/db-check', async (req: Request, res: Response) => {
+  try {
+    console.log('🔍 检查数据库表结构...');
+    
+    // 检查orders表
+    const ordersCount = await sequelize.query(
+      'SELECT COUNT(*) as count FROM orders WHERE delflag = 0',
+      { type: QueryTypes.SELECT }
+    );
+    
+    // 检查order_items表
+    let orderItemsCount = 0;
+    let orderItemsError = null;
+    try {
+      const result = await sequelize.query(
+        'SELECT COUNT(*) as count FROM order_items',
+        { type: QueryTypes.SELECT }
+      );
+      orderItemsCount = (result[0] as any).count;
+    } catch (error) {
+      orderItemsError = error instanceof Error ? error.message : '未知错误';
+    }
+    
+    // 检查stores表
+    const storesCount = await sequelize.query(
+      'SELECT COUNT(*) as count FROM stores WHERE delflag = 0',
+      { type: QueryTypes.SELECT }
+    );
+    
+    // 检查表结构
+    const tables = await sequelize.query(
+      "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'",
+      { type: QueryTypes.SELECT }
+    );
+    
+    res.json({
+      success: true,
+      data: {
+        ordersCount: (ordersCount[0] as any).count,
+        orderItemsCount,
+        orderItemsError,
+        storesCount: (storesCount[0] as any).count,
+        tables: tables.map(t => (t as any).TABLE_NAME),
+      },
+    });
+  } catch (error) {
+    console.error('数据库检查失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '数据库检查失败',
+      details: error instanceof Error ? error.message : '未知错误',
+    });
+  }
+});
 
 export default router;

@@ -125,7 +125,7 @@ def main():
         
         # 写入目标数据库
         logger.info("💾 开始写入hotdog2030.stores...")
-        success = to_sql(df_merged, "dbo.stores", "hotdog2030", if_exists='replace')
+        success = to_sql(df_merged, "dstores", "hotdog2030", if_exists='replace')
         
         if success:
             # 验证结果

@@ -48,14 +48,14 @@ router.get('/profit-analysis', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: results,
-      message: '利润分析数据获取成功'
+      message: '利润分析数据获取成功',
     });
   } catch (error) {
     logger.error('获取利润分析数据失败:', error);
     res.status(500).json({
       success: false,
       message: '获取利润分析数据失败',
-      error: error instanceof Error ? error.message : '未知错误'
+      error: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -88,14 +88,14 @@ router.get('/customer-segments', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: results,
-      message: '客户分群数据获取成功'
+      message: '客户分群数据获取成功',
     });
   } catch (error) {
     logger.error('获取客户分群数据失败:', error);
     res.status(500).json({
       success: false,
       message: '获取客户分群数据失败',
-      error: error instanceof Error ? error.message : '未知错误'
+      error: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -128,14 +128,14 @@ router.get('/sales-forecasts', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: results,
-      message: '销售预测数据获取成功'
+      message: '销售预测数据获取成功',
     });
   } catch (error) {
     logger.error('获取销售预测数据失败:', error);
     res.status(500).json({
       success: false,
       message: '获取销售预测数据失败',
-      error: error instanceof Error ? error.message : '未知错误'
+      error: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -168,14 +168,14 @@ router.get('/site-scores', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: results,
-      message: '选址评分数据获取成功'
+      message: '选址评分数据获取成功',
     });
   } catch (error) {
     logger.error('获取选址评分数据失败:', error);
     res.status(500).json({
       success: false,
       message: '获取选址评分数据失败',
-      error: error instanceof Error ? error.message : '未知错误'
+      error: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -210,14 +210,14 @@ router.get('/dashboard-metrics', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: results[0] || {},
-      message: '仪表板指标数据获取成功'
+      message: '仪表板指标数据获取成功',
     });
   } catch (error) {
     logger.error('获取仪表板指标数据失败:', error);
     res.status(500).json({
       success: false,
       message: '获取仪表板指标数据失败',
-      error: error instanceof Error ? error.message : '未知错误'
+      error: error instanceof Error ? error.message : '未知错误',
     });
   }
 });
@@ -257,12 +257,16 @@ router.get('/insights', async (req: Request, res: Response) => {
     const insights = [];
 
     // 利润洞察
-    if (profitData[0] && (profitData[0] as any).avg_margin !== null && (profitData[0] as any).avg_margin < 30) {
+    if (
+      profitData[0] &&
+      (profitData[0] as any).avg_margin !== null &&
+      (profitData[0] as any).avg_margin < 30
+    ) {
       insights.push({
         type: 'warning',
         title: '毛利率偏低',
         description: `平均毛利率仅${((profitData[0] as any).avg_margin || 0).toFixed(1)}%，建议优化成本结构`,
-        priority: 'high'
+        priority: 'high',
       });
     }
 
@@ -270,36 +274,40 @@ router.get('/insights', async (req: Request, res: Response) => {
     if (customerData[0] && (customerData[0] as any).total_customers > 0) {
       const vipCustomers = (customerData[0] as any).vip_customers || 0;
       const totalCustomers = (customerData[0] as any).total_customers || 1;
-      const vipRatio = (vipCustomers / totalCustomers * 100).toFixed(1);
+      const vipRatio = ((vipCustomers / totalCustomers) * 100).toFixed(1);
       insights.push({
         type: 'info',
         title: 'VIP客户分析',
         description: `VIP客户占比${vipRatio}%，共${vipCustomers}人`,
-        priority: 'medium'
+        priority: 'medium',
       });
     }
 
     // 预测洞察
-    if (forecastData[0] && (forecastData[0] as any).avg_forecast !== null && (forecastData[0] as any).avg_forecast > 0) {
+    if (
+      forecastData[0] &&
+      (forecastData[0] as any).avg_forecast !== null &&
+      (forecastData[0] as any).avg_forecast > 0
+    ) {
       insights.push({
         type: 'success',
         title: '销售预测',
         description: `未来7天平均预测销售额¥${((forecastData[0] as any).avg_forecast || 0).toFixed(2)}`,
-        priority: 'low'
+        priority: 'low',
       });
     }
 
     res.json({
       success: true,
       data: insights,
-      message: 'AI洞察建议获取成功'
+      message: 'AI洞察建议获取成功',
     });
   } catch (error) {
     logger.error('获取AI洞察建议失败:', error);
     res.status(500).json({
       success: false,
       message: '获取AI洞察建议失败',
-      error: error instanceof Error ? error.message : '未知错误'
+      error: error instanceof Error ? error.message : '未知错误',
     });
   }
 });

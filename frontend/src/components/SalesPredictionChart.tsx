@@ -580,7 +580,8 @@ const SalesPredictionChart: React.FC<SalesPredictionProps> = ({ storeId, onStore
     console.log('预测数据结构:', predictionData);
     
     // 尝试从不同路径获取24小时数据
-    let hourlyBreakdown = predictionData?.data?.hourlyBreakdown || 
+    let hourlyBreakdown = predictionData?.data?.[0]?.hourlyBreakdown || 
+                         predictionData?.data?.hourlyBreakdown || 
                          predictionData?.hourlyBreakdown ||
                          predictionData?.data?.hourly_breakdown ||
                          [];

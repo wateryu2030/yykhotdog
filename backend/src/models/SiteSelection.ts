@@ -6,7 +6,7 @@ export enum SiteSelectionStatus {
   PENDING = 'pending',
   INVESTIGATED = 'investigated',
   APPROVED = 'approved',
-  REJECTED = 'rejected'
+  REJECTED = 'rejected',
 }
 
 // 选址记录属性接口
@@ -32,10 +32,14 @@ export interface SiteSelectionAttributes {
 }
 
 // 创建选址记录时的可选属性
-export interface SiteSelectionCreationAttributes extends Optional<SiteSelectionAttributes, 'id' | 'created_at' | 'updated_at'> {}
+export interface SiteSelectionCreationAttributes
+  extends Optional<SiteSelectionAttributes, 'id' | 'created_at' | 'updated_at'> {}
 
 // 选址记录模型类
-export class SiteSelection extends Model<SiteSelectionAttributes, SiteSelectionCreationAttributes> implements SiteSelectionAttributes {
+export class SiteSelection
+  extends Model<SiteSelectionAttributes, SiteSelectionCreationAttributes>
+  implements SiteSelectionAttributes
+{
   public id!: number;
   public location_name!: string;
   public province!: string;
@@ -162,4 +166,4 @@ SiteSelection.init(
   }
 );
 
-export default SiteSelection; 
+export default SiteSelection;
