@@ -1485,7 +1485,7 @@ const Dashboard: React.FC = () => {
 
       {/* 城市详情模态框 - 暂未实现 */}
       {/* <CityDetailModal
-        visible={cityDetailModalVisible}
+        open={cityDetailModalVisible}
         onClose={() => setCityDetailModalVisible(false)}
         selectedRegion={selectedRegion}
       /> */}

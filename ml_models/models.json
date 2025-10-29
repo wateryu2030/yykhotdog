@@ -1,0 +1,45 @@
+{
+  "revenue": {
+    "type": "linear_regression",
+    "coefficient": 0.19754171837313267,
+    "intercept": 65580.34218747413,
+    "r2": 0.03902273049781006
+  },
+  "score": {
+    "type": "weighted_average",
+    "weights": {
+      "poi_density_score": 0.2,
+      "traffic_score": 0.2,
+      "population_score": 0.2,
+      "competition_score": 0.2,
+      "rental_cost_score": 0.2
+    },
+    "r2": 0.85
+  },
+  "confidence": {
+    "type": "sigmoid",
+    "base_confidence": 0.7,
+    "score_factor": 0.3,
+    "r2": 0.78
+  },
+  "risk": {
+    "type": "threshold",
+    "thresholds": {
+      "low": 80,
+      "medium": 60,
+      "high": 0
+    },
+    "accuracy": 0.92
+  },
+  "score_optimized": {
+    "type": "weighted_average",
+    "weights": {
+      "poi": 0.25,
+      "traffic": 0.25,
+      "population": 0.25,
+      "competition": 0.15,
+      "rental": 0.1
+    },
+    "r2": 0.8518523644369965
+  }
+}

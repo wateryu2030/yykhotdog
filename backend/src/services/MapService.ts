@@ -32,8 +32,8 @@ interface AmapResponse {
 // 地图服务配置
 const MAP_CONFIG = {
   AMAP: {
-    WEB_API_KEY: process.env['AMAP_WEB_API_KEY'] || '6ca87ddc68113a085ad770fcd6a3d5d9',
-    JS_API_KEY: process.env['AMAP_JS_API_KEY'] || '3a51e6e2bf985bab2a047fa4aaa23fe2',
+    WEB_API_KEY: process.env['AMAP_API_KEY'] || process.env['AMAP_WEB_API_KEY'] || '6b338665ad02b0d321b851b35fc39acc',
+    JS_API_KEY: process.env['AMAP_API_KEY'] || process.env['AMAP_JS_API_KEY'] || '6b338665ad02b0d321b851b35fc39acc',
     BASE_URL: 'https://restapi.amap.com/v3',
   },
 };

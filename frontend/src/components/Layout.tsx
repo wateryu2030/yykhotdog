@@ -42,6 +42,31 @@ const Layout: React.FC = () => {
       label: '智能选店',
     },
     {
+      key: '/candidate-locations',
+      icon: <EnvironmentOutlined />,
+      label: '意向铺位管理',
+    },
+    {
+      key: '/batch-analysis',
+      icon: <BarChartOutlined />,
+      label: '批量选址分析',
+    },
+    {
+      key: '/site-selection-demo',
+      icon: <EnvironmentOutlined />,
+      label: '选址系统演示',
+    },
+    {
+      key: '/api-test',
+      icon: <MonitorOutlined />,
+      label: 'API测试',
+    },
+    {
+      key: '/gis-map',
+      icon: <EnvironmentOutlined />,
+      label: 'GIS地图展示',
+    },
+    {
       key: '/store-opening',
       icon: <ShopOutlined />,
       label: '开店模块',

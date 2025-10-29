@@ -22,6 +22,11 @@ import AIIntegrationTest from './pages/AIIntegrationTest';
 import IntelligentRecommendations from './components/IntelligentRecommendations';
 import SystemManagement from './components/SystemManagement';
 import AITestPage from './pages/AITestPage';
+import CandidateLocations from './pages/CandidateLocations';
+import BatchAnalysis from './pages/BatchAnalysis';
+import SiteSelectionDemo from './pages/SiteSelectionDemo';
+import APITest from './pages/APITest';
+import GISMapView from './pages/GISMapView';
 import './App.css';
 
 const App: React.FC = () => {
@@ -49,6 +54,11 @@ const App: React.FC = () => {
             <Route path="intelligent-recommendations" element={<IntelligentRecommendations />} />
             <Route path="system-management" element={<SystemManagement />} />
             <Route path="ai-test" element={<AITestPage />} />
+            <Route path="candidate-locations" element={<CandidateLocations />} />
+            <Route path="batch-analysis" element={<BatchAnalysis />} />
+            <Route path="site-selection-demo" element={<SiteSelectionDemo />} />
+            <Route path="api-test" element={<APITest />} />
+            <Route path="gis-map" element={<GISMapView />} />
           </Route>
         </Routes>
       </Router>

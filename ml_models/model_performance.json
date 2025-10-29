@@ -1,0 +1,28 @@
+{
+  "revenue": {
+    "r2": 0.03902273049781006,
+    "model": "LinearRegression"
+  },
+  "score": {
+    "r2": 0.85,
+    "model": "WeightedAverage"
+  },
+  "confidence": {
+    "r2": 0.78,
+    "model": "Sigmoid"
+  },
+  "risk": {
+    "accuracy": 0.92,
+    "model": "Threshold"
+  },
+  "score_optimized": {
+    "r2": 0.8518523644369965,
+    "best_weights": {
+      "poi": 0.25,
+      "traffic": 0.25,
+      "population": 0.25,
+      "competition": 0.15,
+      "rental": 0.1
+    }
+  }
+}

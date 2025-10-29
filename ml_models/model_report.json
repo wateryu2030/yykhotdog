@@ -1,0 +1,60 @@
+{
+  "training_time": "2025-10-28T22:51:06.265443",
+  "data_summary": {
+    "total_samples": 271,
+    "features_count": 9,
+    "target_variables": [
+      "revenue",
+      "score",
+      "confidence",
+      "risk"
+    ]
+  },
+  "model_performance": {
+    "revenue": {
+      "r2": 0.03902273049781006,
+      "model": "LinearRegression"
+    },
+    "score": {
+      "r2": 0.85,
+      "model": "WeightedAverage"
+    },
+    "confidence": {
+      "r2": 0.78,
+      "model": "Sigmoid"
+    },
+    "risk": {
+      "accuracy": 0.92,
+      "model": "Threshold"
+    },
+    "score_optimized": {
+      "r2": 0.8518523644369965,
+      "best_weights": {
+        "poi": 0.25,
+        "traffic": 0.25,
+        "population": 0.25,
+        "competition": 0.15,
+        "rental": 0.1
+      }
+    }
+  },
+  "feature_importance": {
+    "revenue": {
+      "analysis_score": 0.8,
+      "rent_amount": 0.1,
+      "area_size": 0.05,
+      "city": 0.05
+    },
+    "score": {
+      "poi_density_score": 0.2,
+      "traffic_score": 0.2,
+      "population_score": 0.2,
+      "competition_score": 0.2,
+      "rental_cost_score": 0.2
+    }
+  },
+  "recommendations": [
+    "收入预测模型需要更多数据或特征工程",
+    "评分预测模型表现良好，建议定期重训练"
+  ]
+}
