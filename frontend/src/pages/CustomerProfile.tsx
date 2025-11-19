@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Row, Col, Statistic, Table, Select, DatePicker, Button, Modal, message, Space, Tag, Tooltip, Avatar, Badge } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Card, Row, Col, Statistic, Table, Select, DatePicker, Button, Modal, message, Space, Tag, Tooltip, Avatar, Badge, Dropdown, Alert, List, InputNumber } from 'antd';
+import type { MenuProps } from 'antd';
 import { Bar, Line, Pie, Doughnut } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -22,12 +23,30 @@ import {
   InfoCircleOutlined,
   TeamOutlined,
   BellOutlined,
-  RobotOutlined
+  RobotOutlined,
+  DownloadOutlined
 } from '@ant-design/icons';
 import { api } from '../config/api';
 import AIInsightsOverview from '../components/AIInsightsOverview';
+import PurchasePatternAnalysis from './CustomerProfile/components/PurchasePatternAnalysis';
+import AIComprehensiveAnalysis from './CustomerProfile/components/AIComprehensiveAnalysis';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import dayjs from 'dayjs';
+import { exportToPDF, exportToWord } from '../utils/exportAIInsights';
 
-ChartJS.register(ArcElement, ChartTooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
+ChartJS.register(
+  ArcElement,
+  ChartTooltip,
+  Legend,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  PointElement,
+  LineElement
+);
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
@@ -75,6 +94,90 @@ interface Store {
   store_type: string;
 }
 
+type ExportFormat = 'xlsx' | 'csv' | 'pdf';
+
+interface ExportColumnConfig {
+  title: string;
+  dataIndex?: string;
+  getValue?: (record: any) => any;
+  formatter?: (value: any, record?: any) => string | number;
+}
+
+const EXPORT_MENU_ITEMS: MenuProps['items'] = [
+  { key: 'xlsx', label: '导出 Excel (.xlsx)' },
+  { key: 'csv', label: '导出 CSV (.csv)' },
+  { key: 'pdf', label: '导出 PDF (.pdf)' },
+];
+
+const sanitizeFileName = (name: string) => name.replace(/[\\/:*?"<>|]/g, '_');
+
+const generateFileName = (prefix: string, format: ExportFormat) =>
+  `${sanitizeFileName(prefix)}_${dayjs().format('YYYYMMDD_HHmmss')}.${format}`;
+
+const downloadBlob = (content: string | ArrayBuffer, fileName: string, mimeType: string) => {
+  const blobPart: BlobPart = typeof content === 'string' ? content : content;
+  const blob = new Blob([blobPart], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+};
+
+const formatExportValue = (column: ExportColumnConfig, record: any) => {
+  const rawValue =
+    column.getValue?.(record) ??
+    (column.dataIndex ? record[column.dataIndex] : '');
+  if (column.formatter) {
+    const formatted = column.formatter(rawValue, record);
+    return formatted ?? '';
+  }
+  if (rawValue === null || rawValue === undefined) {
+    return '';
+  }
+  if (typeof rawValue === 'number') {
+    return Number.isFinite(rawValue) ? rawValue : '';
+  }
+  return rawValue;
+};
+
+const exportDataSet = (
+  filePrefix: string,
+  format: ExportFormat,
+  columns: ExportColumnConfig[],
+  data: any[]
+) => {
+  const header = columns.map((col) => col.title);
+  const rows = data.map((record) =>
+    columns.map((column) => formatExportValue(column, record))
+  );
+  const fileName = generateFileName(filePrefix, format);
+
+  if (format === 'pdf') {
+    const doc = new jsPDF('l', 'mm', 'a4');
+    autoTable(doc, {
+      head: [header],
+      body: rows,
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [41, 73, 130] },
+    });
+    doc.save(fileName);
+    return;
+  }
+
+  const worksheet = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
+
+  if (format === 'xlsx') {
+    XLSX.writeFile(workbook, fileName);
+  } else {
+    const csv = XLSX.utils.sheet_to_csv(worksheet);
+    downloadBlob(csv, fileName, 'text/csv;charset=utf-8;');
+  }
+};
+
 const CustomerProfile: React.FC = () => {
   const [data, setData] = useState<CustomerProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -87,6 +190,97 @@ const CustomerProfile: React.FC = () => {
   const [selectedSegment, setSelectedSegment] = useState<string>('');
   const [segmentCustomers, setSegmentCustomers] = useState<any[]>([]);
   const [segmentLoading, setSegmentLoading] = useState(false);
+  const [segmentExportLoading, setSegmentExportLoading] = useState(false);
+  const [premiumCustomers, setPremiumCustomers] = useState<any[]>([]);
+  const [premiumStats, setPremiumStats] = useState({
+    totalPremiumCustomers: 0,
+    inactivePremiumCustomers: 0,
+    storeCount: 0,
+  });
+  const [premiumLoading, setPremiumLoading] = useState(false);
+  const [premiumModalVisible, setPremiumModalVisible] = useState(false);
+  const [premiumModalFilter, setPremiumModalFilter] = useState<'all' | 'inactive' | 'new' | 'stable'>('all');
+  const [premiumExportLoading, setPremiumExportLoading] = useState(false);
+  const [exportFilterVisible, setExportFilterVisible] = useState(false);
+  const [exportFilterType, setExportFilterType] = useState<'all' | 'new' | 'stable' | 'inactive'>('all');
+  const [exportContext, setExportContext] = useState<'premium' | 'city' | 'store'>('premium');
+  const [cityPremiumModalVisible, setCityPremiumModalVisible] = useState(false);
+  const [cityPremiumCustomers, setCityPremiumCustomers] = useState<any[]>([]);
+  const [cityPremiumLoading, setCityPremiumLoading] = useState(false);
+  const [cityPremiumPagination, setCityPremiumPagination] = useState({ current: 1, pageSize: 50, total: 0 });
+  const [selectedCityForPremium, setSelectedCityForPremium] = useState<string>('');
+  const [storePremiumModalVisible, setStorePremiumModalVisible] = useState(false);
+  const [storePremiumCustomers, setStorePremiumCustomers] = useState<any[]>([]);
+  const [storePremiumLoading, setStorePremiumLoading] = useState(false);
+  const [storePremiumPagination, setStorePremiumPagination] = useState({ current: 1, pageSize: 50, total: 0 });
+  const [selectedStoreForPremium, setSelectedStoreForPremium] = useState<{ storeId: string; storeName: string } | null>(null);
+  const visiblePremiumCustomers = useMemo(() => {
+    if (selectedShopId) {
+      return premiumCustomers.filter(
+        (item) => String(item.store_id) === String(selectedShopId)
+      );
+    }
+    return premiumCustomers;
+  }, [premiumCustomers, selectedShopId]);
+
+  const displayPremiumStats = useMemo(() => {
+    if (selectedShopId) {
+      const inactiveCount = visiblePremiumCustomers.filter((item) => {
+        const status =
+          item.customer_status ||
+          (item.is_inactive ? '超过30天未购' : '购频稳定');
+        return status === '超过30天未购' || item.is_inactive;
+      }).length;
+      return {
+        totalPremiumCustomers: visiblePremiumCustomers.length,
+        inactivePremiumCustomers: inactiveCount,
+        storeCount: visiblePremiumCustomers.length > 0 ? 1 : 0,
+      };
+    }
+    return premiumStats;
+  }, [selectedShopId, visiblePremiumCustomers, premiumStats]);
+
+  const premiumCustomersByStore = useMemo(() => {
+    const storeMap = new Map<
+      string,
+      { storeId: string; storeName: string; storeCode: string; city: string; customers: any[] }
+    >();
+    visiblePremiumCustomers.forEach((item) => {
+      if (!item.store_id) {
+        return;
+      }
+      const key = String(item.store_id);
+      if (!storeMap.has(key)) {
+        storeMap.set(key, {
+          storeId: key,
+          storeName: item.store_name || '未命名门店',
+          storeCode: item.store_code || '',
+          city: selectedCity || '',
+          customers: [],
+        });
+      }
+      storeMap.get(key)?.customers.push(item);
+    });
+    return Array.from(storeMap.values()).sort((a, b) => {
+      if (a.storeCode && b.storeCode) {
+        return a.storeCode.localeCompare(b.storeCode);
+      }
+      return (a.storeCode || a.storeName).localeCompare(b.storeCode || b.storeName);
+    });
+  }, [visiblePremiumCustomers, selectedCity]);
+
+  const premiumInactiveCustomers = useMemo(() => {
+    return visiblePremiumCustomers.filter((item) => {
+      const status = item.customer_status || (item.is_inactive ? '超过30天未购' : '购频稳定');
+      return status === '超过30天未购' || item.is_inactive;
+    });
+  }, [visiblePremiumCustomers]);
+
+  const premiumModalData = useMemo(() => {
+    const source =
+      premiumModalFilter === 'inactive' ? premiumInactiveCustomers : visiblePremiumCustomers;
+    return source;
+  }, [premiumModalFilter, premiumInactiveCustomers, visiblePremiumCustomers]);
   
   // AI分析相关状态
   const [aiAnalysisVisible, setAiAnalysisVisible] = useState(false);
@@ -97,6 +291,11 @@ const CustomerProfile: React.FC = () => {
   const [churnAlertVisible, setChurnAlertVisible] = useState(false);
   const [churnAlertData, setChurnAlertData] = useState<any>(null);
   const [churnAlertLoading, setChurnAlertLoading] = useState(false);
+  const [churnAlertFilters, setChurnAlertFilters] = useState<{
+    riskLevel?: string[];
+    daysRange?: [number, number];
+  }>({});
+  const [churnAlertExportLoading, setChurnAlertExportLoading] = useState(false);
   const [lifecyclePredictionVisible, setLifecyclePredictionVisible] = useState(false);
   const [lifecycleData, setLifecycleData] = useState<any>(null);
   const [lifecycleLoading, setLifecycleLoading] = useState(false);
@@ -109,6 +308,8 @@ const CustomerProfile: React.FC = () => {
   const [ordersPagination, setOrdersPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [orderDetail, setOrderDetail] = useState<any>(null);
   const [orderDetailLoading, setOrderDetailLoading] = useState(false);
+  const [ordersExportLoading, setOrdersExportLoading] = useState(false);
+  const [goodsExportLoading, setGoodsExportLoading] = useState(false);
   
 
   // 2. 获取客户订单
@@ -123,6 +324,307 @@ const CustomerProfile: React.FC = () => {
       }
     } catch (e) {
       message.error('获取客户订单失败');
+    }
+  };
+
+  const openCustomerOrders = (customerId?: string) => {
+    if (!customerId) {
+      message.warning('缺少客户ID，无法查看订单');
+      return;
+    }
+    setSelectedCustomerId(customerId);
+    setCustomerOrdersVisible(true);
+    fetchCustomerOrders(customerId, 1, 10);
+  };
+
+  const handleOpenPremiumModal = (filter: 'all' | 'inactive') => {
+    setPremiumModalFilter(filter);
+    setPremiumModalVisible(true);
+  };
+
+  const handleExportPremium = async (format: ExportFormat, filter?: 'all' | 'inactive' | 'new' | 'stable') => {
+    const actualFilter = filter || exportFilterType;
+    let dataset: any[] = [];
+    let label = '';
+
+    switch (actualFilter) {
+      case 'new':
+        dataset = visiblePremiumCustomers.filter((item: any) => {
+          const status = item.customer_status || (item.is_inactive ? '超过30天未购' : '购频稳定');
+          return status === '新客户';
+        });
+        label = '新客户';
+        break;
+      case 'stable':
+        dataset = visiblePremiumCustomers.filter((item: any) => {
+          const status = item.customer_status || (item.is_inactive ? '超过30天未购' : '购频稳定');
+          return status === '购频稳定';
+        });
+        label = '购频稳定';
+        break;
+      case 'inactive':
+        dataset = premiumInactiveCustomers;
+        label = '超30天未购';
+        break;
+      default:
+        dataset = visiblePremiumCustomers;
+        label = '全部';
+    }
+
+    setPremiumExportLoading(true);
+    try {
+      if (!dataset.length) {
+        message.info(`当前筛选下暂无${label}优质客户数据`);
+        return;
+      }
+      exportDataSet(`门店优质客户_${label}`, format, premiumExportColumnsConfig, dataset);
+      message.success(`${label}优质客户导出成功`);
+      setExportFilterVisible(false);
+    } catch (error) {
+      console.error(error);
+      message.error('优质客户导出失败');
+    } finally {
+      setPremiumExportLoading(false);
+    }
+  };
+
+  // 获取某个城市的所有优质客户
+  const fetchCityPremiumCustomers = async (city: string, page = 1, pageSize = 50) => {
+    setCityPremiumLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.append('city', city);
+      params.append('intervalThreshold', '7');
+      params.append('inactivityDays', '30');
+      params.append('page', String(page));
+      params.append('pageSize', String(pageSize));
+      if (dateRange) {
+        params.append('startDate', dateRange[0]);
+        params.append('endDate', dateRange[1]);
+      }
+
+      const response = await api.get(`/customer-profile/city-premium-customers?${params.toString()}`);
+      if (response.data.success) {
+        setCityPremiumCustomers(response.data.data.records || []);
+        setCityPremiumPagination({
+          current: page,
+          pageSize,
+          total: response.data.data.total || 0,
+        });
+      } else {
+        message.error('获取城市优质客户失败');
+      }
+    } catch (error) {
+      console.error('获取城市优质客户失败:', error);
+      message.error('获取城市优质客户失败');
+    } finally {
+      setCityPremiumLoading(false);
+    }
+  };
+
+  const handleOpenCityPremiumModal = (city: string) => {
+    setSelectedCityForPremium(city);
+    setCityPremiumModalVisible(true);
+    fetchCityPremiumCustomers(city, 1, 50);
+  };
+
+  // 获取某个门店的所有优质客户
+  const fetchStorePremiumCustomers = async (storeId: string, page = 1, pageSize = 50) => {
+    setStorePremiumLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.append('storeId', storeId);
+      params.append('intervalThreshold', '7');
+      params.append('inactivityDays', '30');
+      params.append('page', String(page));
+      params.append('pageSize', String(pageSize));
+      if (dateRange) {
+        params.append('startDate', dateRange[0]);
+        params.append('endDate', dateRange[1]);
+      }
+
+      const response = await api.get(`/customer-profile/store-premium-customers-all?${params.toString()}`);
+      if (response.data.success) {
+        setStorePremiumCustomers(response.data.data.records || []);
+        setStorePremiumPagination({
+          current: page,
+          pageSize,
+          total: response.data.data.total || 0,
+        });
+      } else {
+        message.error('获取门店优质客户失败');
+      }
+    } catch (error) {
+      console.error('获取门店优质客户失败:', error);
+      message.error('获取门店优质客户失败');
+    } finally {
+      setStorePremiumLoading(false);
+    }
+  };
+
+  const handleOpenStorePremiumModal = (storeId: string, storeName: string) => {
+    setSelectedStoreForPremium({ storeId, storeName });
+    setStorePremiumModalVisible(true);
+    fetchStorePremiumCustomers(storeId, 1, 50);
+  };
+
+  const handleExportStorePremium = async (format: ExportFormat, filter?: 'all' | 'new' | 'stable' | 'inactive') => {
+    if (!selectedStoreForPremium) {
+      message.warning('请先选择门店');
+      return;
+    }
+    const actualFilter = filter || exportFilterType;
+    setPremiumExportLoading(true);
+    const hide = message.loading('正在导出门店优质客户...');
+    try {
+      const allCustomers: any[] = [];
+      const pageSize = 1000;
+      let page = 1;
+      let total = 0;
+      while (true) {
+        const params = new URLSearchParams();
+        params.append('storeId', selectedStoreForPremium.storeId);
+        params.append('intervalThreshold', '7');
+        params.append('inactivityDays', '30');
+        params.append('page', String(page));
+        params.append('pageSize', String(pageSize));
+        if (dateRange) {
+          params.append('startDate', dateRange[0]);
+          params.append('endDate', dateRange[1]);
+        }
+        const response = await api.get(`/customer-profile/store-premium-customers-all?${params.toString()}`);
+        if (response.data.success) {
+          const chunk = response.data.data?.records || [];
+          allCustomers.push(...chunk);
+          total = response.data.data?.total || chunk.length;
+          if (allCustomers.length >= total || chunk.length === 0) {
+            break;
+          }
+          page += 1;
+        } else {
+          break;
+        }
+      }
+      
+      // 根据筛选条件过滤数据
+      let filteredCustomers = allCustomers;
+      let label = '';
+      switch (actualFilter) {
+        case 'new':
+          filteredCustomers = allCustomers.filter((item: any) => {
+            const status = item.customer_status || (item.is_inactive ? '超过30天未购' : '购频稳定');
+            return status === '新客户';
+          });
+          label = '新客户';
+          break;
+        case 'stable':
+          filteredCustomers = allCustomers.filter((item: any) => {
+            const status = item.customer_status || (item.is_inactive ? '超过30天未购' : '购频稳定');
+            return status === '购频稳定';
+          });
+          label = '购频稳定';
+          break;
+        case 'inactive':
+          filteredCustomers = allCustomers.filter((item: any) => item.is_inactive === 1);
+          label = '超30天未购';
+          break;
+        default:
+          label = '全部';
+      }
+      
+      if (filteredCustomers.length === 0) {
+        message.info(`该门店暂无${label}优质客户数据`);
+      } else {
+        exportDataSet(`门店优质客户_${selectedStoreForPremium.storeName}_${label}`, format, premiumExportColumnsConfig, filteredCustomers);
+        message.success(`门店${label}优质客户导出成功`);
+        setExportFilterVisible(false);
+      }
+    } catch (error) {
+      console.error(error);
+      message.error('门店优质客户导出失败');
+    } finally {
+      hide();
+      setPremiumExportLoading(false);
+    }
+  };
+
+  const handleExportCityPremium = async (format: ExportFormat, filter?: 'all' | 'new' | 'stable' | 'inactive') => {
+    if (!selectedCityForPremium) {
+      message.warning('请先选择城市');
+      return;
+    }
+    const actualFilter = filter || exportFilterType;
+    setPremiumExportLoading(true);
+    const hide = message.loading('正在导出城市优质客户...');
+    try {
+      const allCustomers: any[] = [];
+      const pageSize = 1000;
+      let page = 1;
+      let total = 0;
+      while (true) {
+        const params = new URLSearchParams();
+        params.append('city', selectedCityForPremium);
+        params.append('intervalThreshold', '7');
+        params.append('inactivityDays', '30');
+        params.append('page', String(page));
+        params.append('pageSize', String(pageSize));
+        if (dateRange) {
+          params.append('startDate', dateRange[0]);
+          params.append('endDate', dateRange[1]);
+        }
+        const response = await api.get(`/customer-profile/city-premium-customers?${params.toString()}`);
+        if (response.data.success) {
+          const chunk = response.data.data?.records || [];
+          allCustomers.push(...chunk);
+          total = response.data.data?.total || chunk.length;
+          if (allCustomers.length >= total || chunk.length === 0) {
+            break;
+          }
+          page += 1;
+        } else {
+          break;
+        }
+      }
+      
+      // 根据筛选条件过滤数据
+      let filteredCustomers = allCustomers;
+      let label = '';
+      switch (actualFilter) {
+        case 'new':
+          filteredCustomers = allCustomers.filter((item: any) => {
+            const status = item.customer_status || (item.is_inactive ? '超过30天未购' : '购频稳定');
+            return status === '新客户';
+          });
+          label = '新客户';
+          break;
+        case 'stable':
+          filteredCustomers = allCustomers.filter((item: any) => {
+            const status = item.customer_status || (item.is_inactive ? '超过30天未购' : '购频稳定');
+            return status === '购频稳定';
+          });
+          label = '购频稳定';
+          break;
+        case 'inactive':
+          filteredCustomers = allCustomers.filter((item: any) => item.is_inactive === 1);
+          label = '超30天未购';
+          break;
+        default:
+          label = '全部';
+      }
+      
+      if (filteredCustomers.length === 0) {
+        message.info(`该城市暂无${label}优质客户数据`);
+      } else {
+        exportDataSet(`城市优质客户_${selectedCityForPremium}_${label}`, format, premiumExportColumnsConfig, filteredCustomers);
+        message.success(`城市${label}优质客户导出成功`);
+        setExportFilterVisible(false);
+      }
+    } catch (error) {
+      console.error(error);
+      message.error('城市优质客户导出失败');
+    } finally {
+      hide();
+      setPremiumExportLoading(false);
     }
   };
 
@@ -236,6 +738,137 @@ const CustomerProfile: React.FC = () => {
     }
   };
 
+  const fetchSegmentDataForExport = async () => {
+    const results: any[] = [];
+    if (!selectedSegment) {
+      return results;
+    }
+    const pageSize = 1000;
+    let page = 1;
+    let total = 0;
+    do {
+      const params = new URLSearchParams();
+      params.append('segment', selectedSegment || 'all');
+      params.append('page', String(page));
+      params.append('pageSize', String(pageSize));
+      if (selectedCity) params.append('city', selectedCity);
+      if (selectedShopId) params.append('shop', selectedShopId);
+      if (dateRange) {
+        params.append('startDate', dateRange[0]);
+        params.append('endDate', dateRange[1]);
+      }
+      if (sortState.field) params.append('sortField', sortState.field);
+      if (sortState.order) params.append('sortOrder', sortState.order);
+      const response = await api.get(`/customer-profile/customers?${params.toString()}`);
+      if (response.data.success) {
+        const chunk = response.data.data || [];
+        results.push(...chunk);
+        total = response.data.total || chunk.length;
+        if (results.length >= total || chunk.length === 0) {
+          break;
+        }
+        page += 1;
+      } else {
+        break;
+      }
+    } while (results.length < total);
+    return results;
+  };
+
+  const fetchCustomerOrdersForExport = async () => {
+    const results: any[] = [];
+    if (!selectedCustomerId) {
+      return results;
+    }
+    const pageSize = 1000;
+    let page = 1;
+    let total = 0;
+    while (true) {
+      const response = await api.get(
+        `/customer-profile/customers/${selectedCustomerId}/orders?page=${page}&pageSize=${pageSize}`
+      );
+      if (response.data.success) {
+        const chunk = response.data.data?.orders || [];
+        results.push(...chunk);
+        total = response.data.data?.total || chunk.length;
+        if (results.length >= total || chunk.length === 0) {
+          break;
+        }
+        page += 1;
+      } else {
+        break;
+      }
+    }
+    return results;
+  };
+
+  const handleExportSegmentCustomers = async (format: ExportFormat) => {
+    if (!selectedSegment) {
+      message.warning('请先打开客户详情');
+      return;
+    }
+    setSegmentExportLoading(true);
+    const hide = message.loading('正在导出客户列表...');
+    try {
+      const rows = await fetchSegmentDataForExport();
+      if (!rows.length) {
+        message.info('当前筛选条件下暂无客户数据');
+      } else {
+        exportDataSet(`客户列表_${selectedSegment}`, format, customerExportColumnsConfig, rows);
+        message.success('客户列表导出成功');
+      }
+    } catch (error) {
+      console.error(error);
+      message.error('客户列表导出失败');
+    } finally {
+      hide();
+      setSegmentExportLoading(false);
+    }
+  };
+
+  const handleExportCustomerOrders = async (format: ExportFormat) => {
+    if (!selectedCustomerId) {
+      message.warning('请先选择客户再导出订单');
+      return;
+    }
+    setOrdersExportLoading(true);
+    const hide = message.loading('正在导出客户订单...');
+    try {
+      const rows = await fetchCustomerOrdersForExport();
+      if (!rows.length) {
+        message.info('该客户暂无订单数据');
+      } else {
+        exportDataSet(`客户订单_${selectedCustomerId}`, format, orderExportColumnsConfig, rows);
+        message.success('客户订单导出成功');
+      }
+    } catch (error) {
+      console.error(error);
+      message.error('客户订单导出失败');
+    } finally {
+      hide();
+      setOrdersExportLoading(false);
+    }
+  };
+
+  const handleExportOrderGoods = async (format: ExportFormat) => {
+    if (!orderDetail || !orderDetail.goods || orderDetail.goods.length === 0) {
+      message.info('该订单暂无商品明细');
+      return;
+    }
+    setGoodsExportLoading(true);
+    const hide = message.loading('正在导出商品明细...');
+    try {
+      exportDataSet(`商品明细_${orderDetail.order_id}`, format, goodsExportColumnsConfig, orderDetail.goods);
+      message.success('商品明细导出成功');
+    } catch (error) {
+      console.error(error);
+      message.error('商品明细导出失败');
+    } finally {
+      hide();
+      setGoodsExportLoading(false);
+    }
+  };
+
   // 11. 获取客户流失预警
   const fetchChurnAlert = async () => {
     setChurnAlertLoading(true);
@@ -260,7 +893,111 @@ const CustomerProfile: React.FC = () => {
     }
   };
 
-  // 12. 获取客户生命周期预测
+  // 12. 筛选流失预警数据
+  const getFilteredChurnAlerts = () => {
+    if (!churnAlertData?.alerts) return [];
+    
+    let filtered = [...churnAlertData.alerts];
+    
+    // 按风险等级筛选
+    if (churnAlertFilters.riskLevel && churnAlertFilters.riskLevel.length > 0) {
+      filtered = filtered.filter((alert: any) => 
+        churnAlertFilters.riskLevel?.includes(alert.churn_risk_level)
+      );
+    }
+    
+    // 按距今天数范围筛选
+    if (churnAlertFilters.daysRange) {
+      const [minDays, maxDays] = churnAlertFilters.daysRange;
+      filtered = filtered.filter((alert: any) => {
+        const days = alert.days_since_last_order || 0;
+        return days >= minDays && days <= maxDays;
+      });
+    }
+    
+    return filtered;
+  };
+
+  // 13. 导出流失预警数据
+  const handleExportChurnAlert = async (format: 'xlsx' | 'csv' | 'pdf') => {
+    const filteredData = getFilteredChurnAlerts();
+    if (filteredData.length === 0) {
+      message.warning('没有数据可导出');
+      return;
+    }
+    
+    setChurnAlertExportLoading(true);
+    try {
+      const exportData = filteredData.map((item: any) => ({
+        '客户ID': item.customer_id,
+        '首次购买时间': item.first_order_date ? dayjs(item.first_order_date).format('YYYY-MM-DD HH:mm:ss') : '-',
+        '最后订单时间': item.last_order_date ? dayjs(item.last_order_date).format('YYYY-MM-DD HH:mm:ss') : '-',
+        '距今天数': item.days_since_last_order,
+        '风险等级': item.churn_risk_level,
+        '历史订单数': item.total_orders,
+        '历史消费': `¥${Number(item.total_spent || 0).toFixed(2)}`,
+        '平均订单价值': `¥${Number(item.avg_order_value || 0).toFixed(2)}`,
+        '购买频率': item.avg_purchase_interval_days ? `≈${Math.ceil(item.avg_purchase_interval_days)}天/次` : '-'
+      }));
+      
+      if (format === 'xlsx' || format === 'csv') {
+        const ws = XLSX.utils.json_to_sheet(exportData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '流失预警客户');
+        
+        const fileName = `客户流失预警_${selectedCity || '全部城市'}_${dayjs().format('YYYY-MM-DD')}.${format === 'xlsx' ? 'xlsx' : 'csv'}`;
+        XLSX.writeFile(wb, fileName);
+        message.success(`${format.toUpperCase()}导出成功`);
+      } else if (format === 'pdf') {
+        const doc = new jsPDF();
+        const fileName = `客户流失预警_${selectedCity || '全部城市'}_${dayjs().format('YYYY-MM-DD')}`;
+        
+        // 标题
+        doc.setFontSize(16);
+        doc.text('客户流失预警报告', 105, 15, { align: 'center' });
+        
+        // 统计信息
+        doc.setFontSize(12);
+        doc.text(`高风险客户: ${churnAlertData.riskStats?.high || 0}`, 20, 30);
+        doc.text(`中风险客户: ${churnAlertData.riskStats?.medium || 0}`, 20, 37);
+        doc.text(`低风险客户: ${churnAlertData.riskStats?.low || 0}`, 20, 44);
+        doc.text(`总预警客户: ${churnAlertData.riskStats?.total || 0}`, 20, 51);
+        doc.text(`导出时间: ${dayjs().format('YYYY-MM-DD HH:mm:ss')}`, 20, 58);
+        
+        // 表格数据
+        const tableData = exportData.map((item: any) => [
+          item['客户ID']?.substring(0, 20) || '',
+          item['首次购买时间'] || '-',
+          item['最后订单时间'] || '-',
+          item['距今天数'] || 0,
+          item['风险等级'] || '',
+          item['历史订单数'] || 0,
+          item['历史消费'] || '¥0.00',
+          item['平均订单价值'] || '¥0.00',
+          item['购买频率'] || '-'
+        ]);
+        
+        autoTable(doc, {
+          head: [['客户ID', '首次购买时间', '最后订单时间', '距今天数', '风险等级', '历史订单数', '历史消费', '平均订单价值', '购买频率']],
+          body: tableData,
+          startY: 65,
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [41, 73, 130], textColor: [255, 255, 255], fontSize: 9 },
+          margin: { left: 10, right: 10 }
+        });
+        
+        doc.save(`${fileName}.pdf`);
+        message.success('PDF导出成功');
+      }
+    } catch (error) {
+      console.error('导出失败:', error);
+      message.error('导出失败，请重试');
+    } finally {
+      setChurnAlertExportLoading(false);
+    }
+  };
+
+  // 14. 获取客户生命周期预测
   const fetchLifecyclePrediction = async (customerId: string) => {
     setLifecycleLoading(true);
     try {
@@ -283,13 +1020,22 @@ const CustomerProfile: React.FC = () => {
   const customerColumns = [
     {
       title: '客户ID',
-      dataIndex: 'id',
-      key: 'id',
-      render: (text: string) => text ? <a onClick={() => {
-        setSelectedCustomerId(text);
-        setCustomerOrdersVisible(true);
-        fetchCustomerOrders(text, 1, 10);
-      }}>{text}</a> : '-'
+      dataIndex: 'customer_id',
+      key: 'customer_id',
+      render: (text: string) =>
+        text ? (
+          <a
+            onClick={() => {
+              setSelectedCustomerId(text);
+              setCustomerOrdersVisible(true);
+              fetchCustomerOrders(text, 1, 10);
+            }}
+          >
+            {text}
+          </a>
+        ) : (
+          '-'
+        ),
     },
     {
       title: '客户姓名',
@@ -300,8 +1046,8 @@ const CustomerProfile: React.FC = () => {
     },
     {
       title: '手机号',
-      dataIndex: 'phone_number',
-      key: 'phone_number',
+      dataIndex: 'phone',
+      key: 'phone',
       render: (text: string) => text || '-'
     },
     {
@@ -315,6 +1061,12 @@ const CustomerProfile: React.FC = () => {
       dataIndex: 'order_count',
       key: 'order_count',
       sorter: true
+    },
+    {
+      title: '平均购间隔(天)',
+      dataIndex: 'avg_purchase_interval_days',
+      key: 'avg_purchase_interval_days',
+      render: (value: number) => value != null ? `${Math.ceil(value)} 天` : '-',
     },
     {
       title: '总消费',
@@ -345,6 +1097,39 @@ const CustomerProfile: React.FC = () => {
       sorter: true
     }
   ];
+
+const customerExportColumnsConfig: ExportColumnConfig[] = [
+  { title: '客户ID', dataIndex: 'customer_id' },
+  { title: '客户姓名', dataIndex: 'customer_name', formatter: (value) => value || '-' },
+  { title: '手机号', dataIndex: 'phone', formatter: (value) => value || '-' },
+  { title: '客户分群', dataIndex: 'segment_name', formatter: (value) => value || '-' },
+  { title: '订单数量', dataIndex: 'order_count' },
+  {
+    title: '平均购间隔(天)',
+    dataIndex: 'avg_purchase_interval_days',
+    formatter: (value) => (value != null ? Math.ceil(Number(value)) : '-'),
+  },
+  {
+    title: '总消费',
+    dataIndex: 'total_spent',
+    formatter: (value) => (value != null ? Number(value).toFixed(2) : '0.00'),
+  },
+  {
+    title: '平均客单价',
+    dataIndex: 'avg_order_value',
+    formatter: (value) => (value != null ? Number(value).toFixed(2) : '0.00'),
+  },
+  {
+    title: '首次购买',
+    dataIndex: 'first_order_date',
+    formatter: (value) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-'),
+  },
+  {
+    title: '最后购买',
+    dataIndex: 'last_order_date',
+    formatter: (value) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-'),
+  },
+];
 
   // 8. 订单表格列定义，订单号可点击
   const orderColumns = [
@@ -386,6 +1171,197 @@ const CustomerProfile: React.FC = () => {
     }
   ];
 
+const orderExportColumnsConfig: ExportColumnConfig[] = [
+  { title: '订单ID', dataIndex: 'order_id' },
+  { title: '订单编号', dataIndex: 'order_no', formatter: (value) => value || '-' },
+  {
+    title: '下单时间',
+    dataIndex: 'order_date',
+    formatter: (value) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-'),
+  },
+  {
+    title: '金额',
+    dataIndex: 'total_amount',
+    formatter: (value) => (value != null ? Number(value).toFixed(2) : '0.00'),
+  },
+  {
+    title: '支付状态',
+    dataIndex: 'pay_state',
+    formatter: (value) =>
+      value === 1 || value === 2 || value === 3 ? '已支付' : '未支付',
+  },
+  { title: '支付方式', dataIndex: 'pay_mode', formatter: (value) => value ?? '-' },
+  { title: '门店名称', dataIndex: 'shop_name', formatter: (value) => value || '未知门店' },
+];
+
+const goodsExportColumnsConfig: ExportColumnConfig[] = [
+  { title: '商品名称', dataIndex: 'goods_name', formatter: (value) => value || '-' },
+  { title: '数量', dataIndex: 'goods_number' },
+  {
+    title: '单价',
+    dataIndex: 'goods_price',
+    formatter: (value) => (value != null ? Number(value).toFixed(2) : '0.00'),
+  },
+  {
+    title: '小计',
+    dataIndex: 'total_price',
+    formatter: (value) => (value != null ? Number(value).toFixed(2) : '0.00'),
+  },
+  { title: '分类', dataIndex: 'category', formatter: (value) => value || '-' },
+  {
+    title: '优惠金额',
+    dataIndex: 'discount_amount',
+    formatter: (value) => (value != null ? Number(value).toFixed(2) : '-'),
+  },
+  {
+    title: '退款金额',
+    dataIndex: 'refund_amount',
+    formatter: (value) => (value != null ? Number(value).toFixed(2) : '-'),
+  },
+];
+
+  const premiumColumns = [
+    {
+      title: '客户',
+      dataIndex: 'customer_name',
+      key: 'customer_name',
+      render: (_: any, record: any) => record.customer_name || record.customer_id,
+      sorter: (a: any, b: any) => {
+        const nameA = (a.customer_name || a.customer_id || '').toLowerCase();
+        const nameB = (b.customer_name || b.customer_id || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      },
+    },
+    {
+      title: '门店',
+      dataIndex: 'store_name',
+      key: 'store_name',
+      render: (text: string) => text || '未命名门店',
+      sorter: (a: any, b: any) => {
+        const nameA = (a.store_name || '').toLowerCase();
+        const nameB = (b.store_name || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      },
+    },
+    {
+      title: '平均购频',
+      dataIndex: 'avg_purchase_interval_days',
+      key: 'avg_purchase_interval_days',
+      render: (value: number) => (value != null ? `≈${Math.ceil(value)} 天/次` : '-'),
+      sorter: (a: any, b: any) => {
+        const valA = a.avg_purchase_interval_days || 0;
+        const valB = b.avg_purchase_interval_days || 0;
+        return valA - valB;
+      },
+    },
+    {
+      title: '累计消费',
+      dataIndex: 'total_spent',
+      key: 'total_spent',
+      render: (value: number) => `¥${(value ?? 0).toFixed(2)}`,
+      sorter: (a: any, b: any) => {
+        const valA = a.total_spent || 0;
+        const valB = b.total_spent || 0;
+        return valA - valB;
+      },
+    },
+    {
+      title: '首次购买',
+      dataIndex: 'first_order_date',
+      key: 'first_order_date',
+      render: (text: string) => (text ? dayjs(text).format('YYYY-MM-DD') : '-'),
+      sorter: (a: any, b: any) => {
+        const dateA = a.first_order_date ? dayjs(a.first_order_date).valueOf() : 0;
+        const dateB = b.first_order_date ? dayjs(b.first_order_date).valueOf() : 0;
+        return dateA - dateB;
+      },
+    },
+    {
+      title: '最后购买',
+      dataIndex: 'last_order_date',
+      key: 'last_order_date',
+      render: (text: string) => (text ? dayjs(text).format('YYYY-MM-DD') : '-'),
+      sorter: (a: any, b: any) => {
+        const dateA = a.last_order_date ? dayjs(a.last_order_date).valueOf() : 0;
+        const dateB = b.last_order_date ? dayjs(b.last_order_date).valueOf() : 0;
+        return dateA - dateB;
+      },
+    },
+    {
+      title: '状态',
+      dataIndex: 'customer_status',
+      key: 'customer_status',
+      render: (status: string, record: any) => {
+        // 如果没有customer_status字段，使用is_inactive作为后备
+        const displayStatus = status || (record.is_inactive ? '超过30天未购' : '购频稳定');
+        if (displayStatus === '新客户') {
+          return <Tag color="blue">新客户</Tag>;
+        } else if (displayStatus === '超过30天未购') {
+          return <Tag color="red">超过30天未购</Tag>;
+        } else {
+          return <Tag color="green">购频稳定</Tag>;
+        }
+      },
+      filters: [
+        { text: '全部', value: 'all' },
+        { text: '新客户', value: 'new' },
+        { text: '购频稳定', value: 'stable' },
+        { text: '超过30天未购', value: 'inactive' },
+      ],
+      onFilter: (value: any, record: any) => {
+        if (value === 'all') return true;
+        const status = record.customer_status || (record.is_inactive ? '超过30天未购' : '购频稳定');
+        if (value === 'new') return status === '新客户';
+        if (value === 'stable') return status === '购频稳定';
+        if (value === 'inactive') return status === '超过30天未购';
+        return true;
+      },
+    },
+    {
+      title: '操作',
+      key: 'action',
+      render: (_: any, record: any) => (
+        <Button type="link" size="small" onClick={() => openCustomerOrders(record.customer_id)}>
+          查看订单
+        </Button>
+      ),
+    },
+];
+
+const premiumExportColumnsConfig: ExportColumnConfig[] = [
+  { title: '客户ID', dataIndex: 'customer_id' },
+  { title: '客户姓名', dataIndex: 'customer_name', formatter: (value, record) => value || record?.customer_id || '-' },
+  { title: '门店', dataIndex: 'store_name', formatter: (value) => value || '未命名门店' },
+  {
+    title: '平均购频(天/次)',
+    dataIndex: 'avg_purchase_interval_days',
+    formatter: (value) => (value != null ? Math.ceil(Number(value)) : '-'),
+  },
+  {
+    title: '累计消费',
+    dataIndex: 'total_spent',
+    formatter: (value) => (value != null ? Number(value).toFixed(2) : '0.00'),
+  },
+  {
+    title: '首次购买',
+    dataIndex: 'first_order_date',
+    formatter: (value) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-'),
+  },
+  {
+    title: '最后购买',
+    dataIndex: 'last_order_date',
+    formatter: (value) => (value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '-'),
+  },
+  {
+    title: '状态',
+    dataIndex: 'customer_status',
+    formatter: (value, record) => {
+      // 如果没有customer_status字段，使用is_inactive作为后备
+      return value || (record?.is_inactive ? '超过30天未购' : '购频稳定');
+    },
+  },
+];
+
   // 获取城市列表
   const fetchCities = async () => {
     try {
@@ -425,6 +1401,7 @@ const CustomerProfile: React.FC = () => {
   // 获取客户画像数据
   const fetchCustomerProfileData = async () => {
     setLoading(true);
+    setPremiumLoading(true);
     try {
       const params = new URLSearchParams();
       if (selectedCity) params.append('city', selectedCity);
@@ -433,18 +1410,60 @@ const CustomerProfile: React.FC = () => {
         params.append('startDate', dateRange[0]);
         params.append('endDate', dateRange[1]);
       }
+      const premiumParams = new URLSearchParams(params.toString());
+      premiumParams.set('intervalThreshold', '7');
+      premiumParams.set('inactivityDays', '30');
+      premiumParams.set('limitPerStore', '5');
 
-      const response = await api.get(`/customer-profile/dashboard?${params.toString()}`);
-      if (response.data.success) {
-        setData(response.data.data);
+      const paramsString = params.toString();
+      const premiumParamsString = premiumParams.toString();
+      const dashboardUrl = paramsString
+        ? `/customer-profile/dashboard?${paramsString}`
+        : '/customer-profile/dashboard';
+      const premiumUrl = premiumParamsString
+        ? `/customer-profile/store-premium-customers?${premiumParamsString}`
+        : '/customer-profile/store-premium-customers';
+
+      const [dashboardResponse, premiumResponse] = await Promise.all([
+        api.get(dashboardUrl),
+        api.get(premiumUrl),
+      ]);
+
+      if (dashboardResponse.data.success) {
+        setData(dashboardResponse.data.data);
       } else {
         message.error('获取数据失败');
+      }
+
+      if (premiumResponse.data.success) {
+        setPremiumCustomers(premiumResponse.data.data?.records || []);
+        setPremiumStats(
+          premiumResponse.data.data?.stats || {
+            totalPremiumCustomers: 0,
+            inactivePremiumCustomers: 0,
+            storeCount: 0,
+          }
+        );
+      } else {
+        setPremiumCustomers([]);
+        setPremiumStats({
+          totalPremiumCustomers: 0,
+          inactivePremiumCustomers: 0,
+          storeCount: 0,
+        });
       }
     } catch (error) {
       console.error('获取客户画像数据失败:', error);
       message.error('获取数据失败');
+      setPremiumCustomers([]);
+      setPremiumStats({
+        totalPremiumCustomers: 0,
+        inactivePremiumCustomers: 0,
+        storeCount: 0,
+      });
     } finally {
       setLoading(false);
+      setPremiumLoading(false);
     }
   };
 
@@ -808,6 +1827,409 @@ const CustomerProfile: React.FC = () => {
         </Col>
       </Row>
 
+      <Card
+        title={
+          <Space>
+            <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#333' }}>
+              门店优质客户（周购频）
+            </span>
+            <Tag color="blue" style={{ borderRadius: '4px' }}>
+              平均≤7天/次
+            </Tag>
+          </Space>
+        }
+        style={{
+          marginBottom: '24px',
+          borderRadius: '12px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+          border: 'none',
+        }}
+        loading={premiumLoading}
+      >
+        {displayPremiumStats.totalPremiumCustomers === 0 ? (
+          <div style={{ padding: '16px', color: '#999' }}>
+            当前筛选条件下暂无符合“每周购买一次”特征的优质客户
+          </div>
+        ) : (
+          <>
+            <Space size="large" wrap>
+              <div
+                onClick={() => handleOpenPremiumModal('all')}
+                style={{ cursor: 'pointer' }}
+              >
+                <Statistic
+                  title="优质客户总数"
+                  value={displayPremiumStats.totalPremiumCustomers}
+                  valueStyle={{ fontWeight: 600 }}
+                />
+              </div>
+              <div
+                onClick={() => handleOpenPremiumModal('all')}
+                style={{ cursor: 'pointer' }}
+              >
+                <Statistic
+                  title="覆盖门店数"
+                  value={displayPremiumStats.storeCount}
+                  valueStyle={{ fontWeight: 600 }}
+                />
+              </div>
+              <div
+                onClick={() => handleOpenPremiumModal('inactive')}
+                style={{ cursor: 'pointer' }}
+              >
+                <Statistic
+                  title="超30天未购买"
+                  value={displayPremiumStats.inactivePremiumCustomers}
+                  valueStyle={{
+                    fontWeight: 600,
+                    color: displayPremiumStats.inactivePremiumCustomers ? '#ff4d4f' : '#52c41a',
+                  }}
+                />
+              </div>
+            </Space>
+            <Space style={{ marginTop: 12 }}>
+              <Button type="link" onClick={() => handleOpenPremiumModal('all')}>
+                查看全部优质客户
+              </Button>
+              <Button type="link" onClick={() => handleOpenPremiumModal('inactive')}>
+                仅看超过30天未购
+              </Button>
+            </Space>
+            {premiumInactiveCustomers.length > 0 && (
+              <Alert
+                type="warning"
+                showIcon
+                style={{ marginTop: 16 }}
+                message={`共有 ${displayPremiumStats.inactivePremiumCustomers} 位优质客户已超过30天未复购`}
+                description="建议尽快发起关怀回访或发送专属活动券，避免优质客群流失。"
+              />
+            )}
+            <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+              {premiumCustomersByStore.map((store) => (
+                <Col span={12} key={store.storeId}>
+                  <Card
+                    size="small"
+                    title={`${store.storeName} · 优质客户 ${store.customers.length} 人`}
+                    styles={{ body: { padding: '16px' } }}
+                    headStyle={{ fontWeight: 600 }}
+                  >
+                    {store.customers.map((customer: any) => (
+                      <div
+                        key={`${store.storeId}-${customer.customer_id}`}
+                        style={{
+                          padding: '12px 0',
+                          borderBottom: '1px solid #f0f0f0',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: 4,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span style={{ fontWeight: 600 }}>
+                              {customer.customer_name || customer.customer_id}
+                            </span>
+                            <Button
+                              type="link"
+                              size="small"
+                              style={{ padding: 0 }}
+                              onClick={() => openCustomerOrders(customer.customer_id)}
+                            >
+                              查看订单
+                            </Button>
+                          </div>
+                          <Tag color="#2db7f5">
+                            ≈{Math.ceil(customer.avg_purchase_interval_days || 0)}天/次
+                          </Tag>
+                        </div>
+                        <div style={{ fontSize: 12, color: '#666' }}>
+                          首次购买：{' '}
+                          {customer.first_order_date
+                            ? dayjs(customer.first_order_date).format('YYYY-MM-DD')
+                            : '-'}
+                          ，最近购买：{' '}
+                          {customer.last_order_date
+                            ? dayjs(customer.last_order_date).format('YYYY-MM-DD')
+                            : '-'}
+                          ，累计消费 ¥{Number(customer.total_spent || 0).toFixed(2)}
+                        </div>
+                        <div style={{ marginTop: 6 }}>
+                          {customer.phone && (
+                            <Tag color="default" style={{ marginRight: 8 }}>
+                              {customer.phone}
+                            </Tag>
+                          )}
+                          {(() => {
+                            const status = customer.customer_status || (customer.is_inactive ? '超过30天未购' : '购频稳定');
+                            if (status === '新客户') {
+                              return <Tag color="blue">新客户</Tag>;
+                            } else if (status === '超过30天未购') {
+                              return <Tag color="red">超过30天未购</Tag>;
+                            } else {
+                              return <Tag color="green">购频稳定</Tag>;
+                            }
+                          })()}
+                        </div>
+                      </div>
+                    ))}
+                    <div style={{ marginTop: 12, textAlign: 'center', paddingTop: 12, borderTop: '1px solid #f0f0f0' }}>
+                      <Button
+                        type="link"
+                        onClick={() => handleOpenStorePremiumModal(store.storeId, store.storeName)}
+                      >
+                        更多
+                      </Button>
+                    </div>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+          </>
+        )}
+      </Card>
+
+      <Modal
+        title="门店优质客户列表"
+        open={premiumModalVisible}
+        onCancel={() => setPremiumModalVisible(false)}
+        footer={null}
+        width={1000}
+      >
+        <Space style={{ marginBottom: 16 }} wrap>
+          <Tag color="blue">
+            当前显示：{premiumModalFilter === 'inactive' ? '超过30天未复购' : '全部优质客户'}
+          </Tag>
+          <Button
+            type={premiumModalFilter === 'all' ? 'primary' : 'default'}
+            onClick={() => setPremiumModalFilter('all')}
+          >
+            全部 ({displayPremiumStats.totalPremiumCustomers})
+          </Button>
+          <Button
+            type={premiumModalFilter === 'inactive' ? 'primary' : 'default'}
+            onClick={() => setPremiumModalFilter('inactive')}
+          >
+            超30天未购 ({displayPremiumStats.inactivePremiumCustomers})
+          </Button>
+          <Button 
+            icon={<DownloadOutlined />} 
+            loading={premiumExportLoading}
+            onClick={() => {
+              setExportContext('premium');
+              setExportFilterVisible(true);
+              setExportFilterType(premiumModalFilter === 'inactive' ? 'inactive' : 'all');
+            }}
+          >
+            导出（筛选）
+          </Button>
+        </Space>
+        <Table
+          columns={premiumColumns}
+          dataSource={premiumModalData}
+          rowKey={(record) => `${record.store_id || 'unknown'}-${record.customer_id}`}
+          pagination={{ pageSize: 10 }}
+          scroll={{ x: 'max-content' }}
+        />
+      </Modal>
+
+      {/* 导出筛选Modal */}
+      <Modal
+        title="选择导出筛选条件"
+        open={exportFilterVisible}
+        onCancel={() => setExportFilterVisible(false)}
+        footer={null}
+        width={500}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size="large">
+          <div>
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>选择要导出的客户状态：</div>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              <Button
+                block
+                type={exportFilterType === 'all' ? 'primary' : 'default'}
+                onClick={() => setExportFilterType('all')}
+              >
+                全部优质客户
+              </Button>
+              <Button
+                block
+                type={exportFilterType === 'new' ? 'primary' : 'default'}
+                onClick={() => setExportFilterType('new')}
+              >
+                新客户
+              </Button>
+              <Button
+                block
+                type={exportFilterType === 'stable' ? 'primary' : 'default'}
+                onClick={() => setExportFilterType('stable')}
+              >
+                购频稳定
+              </Button>
+              <Button
+                block
+                type={exportFilterType === 'inactive' ? 'primary' : 'default'}
+                onClick={() => setExportFilterType('inactive')}
+              >
+                超过30天未购
+              </Button>
+            </Space>
+          </div>
+          <div>
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>选择导出格式：</div>
+            <Space wrap>
+              {EXPORT_MENU_ITEMS.filter((item): item is { key: string; label: string } => 
+                item !== null && 'key' in item && 'label' in item
+              ).map((item) => (
+                <Button
+                  key={item.key}
+                  icon={<DownloadOutlined />}
+                  onClick={() => {
+                    if (exportContext === 'city') {
+                      handleExportCityPremium(item.key as ExportFormat);
+                    } else if (exportContext === 'store') {
+                      handleExportStorePremium(item.key as ExportFormat);
+                    } else {
+                      handleExportPremium(item.key as ExportFormat);
+                    }
+                  }}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </Space>
+          </div>
+        </Space>
+      </Modal>
+
+      {/* 城市优质客户列表模态框 */}
+      <Modal
+        title={`${selectedCityForPremium} - 城市优质客户列表`}
+        open={cityPremiumModalVisible}
+        onCancel={() => {
+          setCityPremiumModalVisible(false);
+          setCityPremiumCustomers([]);
+          setSelectedCityForPremium('');
+        }}
+        footer={null}
+        width={1200}
+      >
+        <Space style={{ marginBottom: 16 }} wrap>
+          <Tag color="blue">
+            城市：{selectedCityForPremium} | 共 {cityPremiumPagination.total} 位优质客户
+          </Tag>
+          <Button 
+            icon={<DownloadOutlined />} 
+            loading={premiumExportLoading}
+            onClick={() => {
+              setExportContext('city');
+              setExportFilterVisible(true);
+              setExportFilterType('all');
+            }}
+          >
+            导出（筛选）
+          </Button>
+        </Space>
+        <Table
+          columns={premiumColumns}
+          dataSource={cityPremiumCustomers}
+          rowKey={(record) => `${record.store_id || 'unknown'}-${record.customer_id}`}
+          loading={cityPremiumLoading}
+          scroll={{ x: 'max-content' }}
+          pagination={{
+            current: cityPremiumPagination.current,
+            pageSize: cityPremiumPagination.pageSize,
+            total: cityPremiumPagination.total,
+            showSizeChanger: true,
+            showTotal: (total) => `共 ${total} 条`,
+            onChange: (page, pageSize) => {
+              if (selectedCityForPremium) {
+                fetchCityPremiumCustomers(selectedCityForPremium, page, pageSize);
+              }
+            },
+            onShowSizeChange: (current, size) => {
+              if (selectedCityForPremium) {
+                fetchCityPremiumCustomers(selectedCityForPremium, current, size);
+              }
+            },
+          }}
+        />
+      </Modal>
+
+      {/* 门店优质客户列表模态框 */}
+      <Modal
+        title={`${selectedStoreForPremium?.storeName || ''} - 门店优质客户列表`}
+        open={storePremiumModalVisible}
+        onCancel={() => {
+          setStorePremiumModalVisible(false);
+          setStorePremiumCustomers([]);
+          setSelectedStoreForPremium(null);
+        }}
+        footer={null}
+        width={1200}
+      >
+        <Space style={{ marginBottom: 16 }} wrap>
+          <Tag color="blue">
+            门店：{selectedStoreForPremium?.storeName || ''} | 共 {storePremiumPagination.total} 位优质客户
+          </Tag>
+          <Button 
+            icon={<DownloadOutlined />} 
+            loading={premiumExportLoading}
+            onClick={() => {
+              setExportContext('store');
+              setExportFilterVisible(true);
+              setExportFilterType('all');
+            }}
+          >
+            导出（筛选）
+          </Button>
+        </Space>
+        <Table
+          columns={premiumColumns}
+          dataSource={storePremiumCustomers}
+          rowKey={(record) => `${record.store_id || 'unknown'}-${record.customer_id}`}
+          loading={storePremiumLoading}
+          scroll={{ x: 'max-content' }}
+          pagination={{
+            current: storePremiumPagination.current,
+            pageSize: storePremiumPagination.pageSize,
+            total: storePremiumPagination.total,
+            showSizeChanger: true,
+            showTotal: (total) => `共 ${total} 条`,
+            onChange: (page, pageSize) => {
+              if (selectedStoreForPremium) {
+                fetchStorePremiumCustomers(selectedStoreForPremium.storeId, page, pageSize);
+              }
+            },
+            onShowSizeChange: (current, size) => {
+              if (selectedStoreForPremium) {
+                fetchStorePremiumCustomers(selectedStoreForPremium.storeId, current, size);
+              }
+            },
+          }}
+        />
+      </Modal>
+
+      {/* 购买习惯分析 */}
+      <PurchasePatternAnalysis
+        selectedCity={selectedCity}
+        selectedStoreId={selectedShopId}
+      />
+
+      {/* AI智能洞察 - 综合分析 */}
+      <Row gutter={20} style={{ marginBottom: '24px' }}>
+        <Col span={24}>
+          <AIComprehensiveAnalysis
+            selectedCity={selectedCity}
+            selectedShopId={selectedShopId}
+            dateRange={dateRange}
+          />
+        </Col>
+      </Row>
+
       {/* AI洞察快速概览 */}
       <Row gutter={20} style={{ marginBottom: '24px' }}>
         <Col span={24}>
@@ -1049,7 +2471,22 @@ const CustomerProfile: React.FC = () => {
 
       {/* 客户分层详情模态框 */}
       <Modal
-        title={`${selectedSegment}客户详情`}
+        title={
+          <Space>
+            <span>{`${selectedSegment || '全部'}客户详情`}</span>
+            <Dropdown
+              menu={{
+                items: EXPORT_MENU_ITEMS,
+                onClick: ({ key }) => handleExportSegmentCustomers(key as ExportFormat),
+              }}
+              trigger={['click']}
+            >
+              <Button icon={<DownloadOutlined />} loading={segmentExportLoading}>
+                导出
+              </Button>
+            </Dropdown>
+          </Space>
+        }
         open={segmentDetailVisible}
         onCancel={() => setSegmentDetailVisible(false)}
         width={1200}
@@ -1059,7 +2496,7 @@ const CustomerProfile: React.FC = () => {
           columns={customerColumns}
           dataSource={segmentCustomers}
           loading={segmentLoading}
-          rowKey="id"
+          rowKey="customer_id"
           pagination={{
             current: segmentPagination.current,
             pageSize: segmentPagination.pageSize,
@@ -1076,7 +2513,26 @@ const CustomerProfile: React.FC = () => {
 
       {/* 客户订单弹窗 */}
       <Modal
-        title={`客户 ${selectedCustomerId} 的订单`}
+        title={
+          <Space>
+            <span>{`客户 ${selectedCustomerId || '-'} 的订单`}</span>
+            <Dropdown
+              menu={{
+                items: EXPORT_MENU_ITEMS,
+                onClick: ({ key }) => handleExportCustomerOrders(key as ExportFormat),
+              }}
+              trigger={['click']}
+            >
+              <Button
+                icon={<DownloadOutlined />}
+                loading={ordersExportLoading}
+                disabled={!selectedCustomerId}
+              >
+                导出
+              </Button>
+            </Dropdown>
+          </Space>
+        }
         open={customerOrdersVisible}
         onCancel={() => setCustomerOrdersVisible(false)}
         width={900}
@@ -1243,9 +2699,39 @@ const CustomerProfile: React.FC = () => {
       {/* AI深度洞察弹窗 */}
       <Modal
         title={
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <RobotOutlined style={{ marginRight: 8, color: '#1890ff' }} />
-            AI深度客户洞察
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <RobotOutlined style={{ marginRight: 8, color: '#1890ff' }} />
+              AI深度客户洞察
+            </div>
+            {aiAnalysisData && (
+              <Space>
+                <Button
+                  icon={<DownloadOutlined />}
+                  onClick={() => {
+                    const storeName = selectedShopId 
+                      ? stores.find(s => String(s.id) === String(selectedShopId))?.store_name || ''
+                      : '';
+                    exportToPDF(aiAnalysisData, selectedCity || '', storeName);
+                    message.success('PDF导出中...');
+                  }}
+                >
+                  导出PDF
+                </Button>
+                <Button
+                  icon={<DownloadOutlined />}
+                  onClick={() => {
+                    const storeName = selectedShopId 
+                      ? stores.find(s => String(s.id) === String(selectedShopId))?.store_name || ''
+                      : '';
+                    exportToWord(aiAnalysisData, selectedCity || '', storeName);
+                    message.success('Word导出中...');
+                  }}
+                >
+                  导出Word
+                </Button>
+              </Space>
+            )}
           </div>
         }
         open={aiAnalysisVisible}
@@ -1253,6 +2739,7 @@ const CustomerProfile: React.FC = () => {
         width={1200}
         footer={null}
         styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
+        className="ai-insights-modal"
       >
         {aiAnalysisData ? (
           <div>
@@ -1321,21 +2808,79 @@ const CustomerProfile: React.FC = () => {
               </Card>
             )}
 
+            {/* 竞品营销方法参考 */}
+            {aiAnalysisData?.insights?.competitiveMarketingSuggestions && aiAnalysisData.insights.competitiveMarketingSuggestions.length > 0 && (
+              <Card title="竞品营销方法参考" style={{ marginBottom: 16 }}>
+                <List
+                  dataSource={aiAnalysisData.insights.competitiveMarketingSuggestions}
+                  renderItem={(suggestion: string, index: number) => (
+                    <List.Item>
+                      <div style={{ display: 'flex', alignItems: 'flex-start' }}>
+                        <span style={{ marginRight: 8, fontWeight: 'bold', color: '#1890ff' }}>{index + 1}.</span>
+                        <span style={{ lineHeight: 1.6 }}>{suggestion}</span>
+                      </div>
+                    </List.Item>
+                  )}
+                />
+              </Card>
+            )}
+
+            {/* 数据表格 */}
+            {aiAnalysisData?.insights?.dataTables && aiAnalysisData.insights.dataTables.length > 0 && (
+              <Card title="数据表格" style={{ marginBottom: 16 }}>
+                {aiAnalysisData.insights.dataTables.map((table: any, tableIndex: number) => (
+                  <div key={tableIndex} style={{ marginBottom: 24 }}>
+                    <h4 style={{ marginBottom: 12, fontSize: 14, fontWeight: 'bold' }}>{table.title}</h4>
+                    <Table
+                      dataSource={table.data.slice(0, 20)}
+                      columns={table.columns.map((col: string) => ({
+                        title: col,
+                        dataIndex: col,
+                        key: col,
+                        render: (text: any) => String(text || '')
+                      }))}
+                      pagination={false}
+                      size="small"
+                      style={{ marginBottom: 16 }}
+                    />
+                  </div>
+                ))}
+              </Card>
+            )}
+
             {/* 产品推荐策略 */}
             {aiAnalysisData?.insights?.productRecommendationStrategy && (
               <Card title="产品推荐策略" style={{ marginBottom: 16 }}>
-                <p style={{ margin: 0, lineHeight: 1.6 }}>
+                <p style={{ margin: 0, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>
                   {aiAnalysisData?.insights?.productRecommendationStrategy}
                 </p>
               </Card>
             )}
 
-            {/* 原始数据 */}
+            {/* 分析数据详情 */}
             <Card title="分析数据详情" size="small">
               <div style={{ fontSize: 12, color: '#666' }}>
-                <p><strong>生成时间：</strong>{aiAnalysisData?.generatedAt || '未知'}</p>
+                <p><strong>生成时间：</strong>{aiAnalysisData?.generatedAt ? dayjs(aiAnalysisData.generatedAt).format('YYYY-MM-DD HH:mm:ss') : '未知'}</p>
                 <p><strong>数据样本：</strong>{aiAnalysisData?.rawData?.segments?.length || 0} 个客户分群</p>
-                <p><strong>时间范围：</strong>24小时分布分析</p>
+                {aiAnalysisData?.analysisScope && (
+                  <>
+                    <p><strong>分析范围：</strong>
+                      {aiAnalysisData.analysisScope.type === 'all_cities' ? '全部城市' :
+                       aiAnalysisData.analysisScope.type === 'city' ? `城市：${aiAnalysisData.analysisScope.city}` :
+                       aiAnalysisData.analysisScope.type === 'store' ? `店铺：${aiAnalysisData.analysisScope.storeName}（${aiAnalysisData.analysisScope.city}）` :
+                       '未知'}
+                    </p>
+                    {aiAnalysisData.analysisScope.cityStoreCount && (
+                      <p><strong>城市店铺数：</strong>{aiAnalysisData.analysisScope.cityStoreCount} 个</p>
+                    )}
+                  </>
+                )}
+                {aiAnalysisData?.rawData?.timeDistribution && (
+                  <p><strong>时间分布：</strong>24小时分布分析（{aiAnalysisData.rawData.timeDistribution.filter((t: any) => t.customer_count > 0).length} 个活跃时段）</p>
+                )}
+                {aiAnalysisData?.rawData?.productPreferences && (
+                  <p><strong>产品偏好：</strong>{aiAnalysisData.rawData.productPreferences.length} 个热门产品</p>
+                )}
               </div>
             </Card>
           </div>
@@ -1349,14 +2894,47 @@ const CustomerProfile: React.FC = () => {
       {/* 客户流失预警弹窗 */}
       <Modal
         title={
-          <div style={{ display: 'flex', alignItems: 'center' }}>
-            <BellOutlined style={{ marginRight: 8, color: '#ff4d4f' }} />
-            客户流失预警
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <BellOutlined style={{ marginRight: 8, color: '#ff4d4f' }} />
+              客户流失预警
+            </div>
+            {churnAlertData && (
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: 'xlsx',
+                      label: '导出Excel',
+                      onClick: () => handleExportChurnAlert('xlsx')
+                    },
+                    {
+                      key: 'csv',
+                      label: '导出CSV',
+                      onClick: () => handleExportChurnAlert('csv')
+                    },
+                    {
+                      key: 'pdf',
+                      label: '导出PDF',
+                      onClick: () => handleExportChurnAlert('pdf')
+                    }
+                  ]
+                }}
+                trigger={['click']}
+              >
+                <Button icon={<DownloadOutlined />} loading={churnAlertExportLoading}>
+                  导出
+                </Button>
+              </Dropdown>
+            )}
           </div>
         }
         open={churnAlertVisible}
-        onCancel={() => setChurnAlertVisible(false)}
-        width={1000}
+        onCancel={() => {
+          setChurnAlertVisible(false);
+          setChurnAlertFilters({});
+        }}
+        width={1400}
         footer={null}
         styles={{ body: { maxHeight: '70vh', overflowY: 'auto' } }}
       >
@@ -1396,48 +2974,140 @@ const CustomerProfile: React.FC = () => {
               </Row>
             </Card>
 
+            {/* 筛选器 */}
+            <Card title="筛选条件" style={{ marginBottom: 16 }} size="small">
+              <Space wrap>
+                <span>风险等级：</span>
+                <Select
+                  mode="multiple"
+                  placeholder="选择风险等级"
+                  style={{ width: 200 }}
+                  value={churnAlertFilters.riskLevel}
+                  onChange={(value) => setChurnAlertFilters({ ...churnAlertFilters, riskLevel: value })}
+                  allowClear
+                  options={[
+                    { label: '高风险', value: '高风险' },
+                    { label: '中风险', value: '中风险' },
+                    { label: '低风险', value: '低风险' }
+                  ]}
+                />
+                <span>距今天数范围：</span>
+                <InputNumber
+                  placeholder="最小天数"
+                  min={0}
+                  style={{ width: 120 }}
+                  value={churnAlertFilters.daysRange?.[0]}
+                  onChange={(value) => setChurnAlertFilters({
+                    ...churnAlertFilters,
+                    daysRange: [value || 0, churnAlertFilters.daysRange?.[1] || 9999]
+                  })}
+                />
+                <span>-</span>
+                <InputNumber
+                  placeholder="最大天数"
+                  min={0}
+                  style={{ width: 120 }}
+                  value={churnAlertFilters.daysRange?.[1]}
+                  onChange={(value) => setChurnAlertFilters({
+                    ...churnAlertFilters,
+                    daysRange: [churnAlertFilters.daysRange?.[0] || 0, value || 9999]
+                  })}
+                />
+                <Button onClick={() => setChurnAlertFilters({})}>重置筛选</Button>
+              </Space>
+            </Card>
+
             {/* 预警客户列表 */}
             <Card title="预警客户详情">
               <Table
-                dataSource={churnAlertData.alerts || []}
+                dataSource={getFilteredChurnAlerts()}
                 rowKey="customer_id"
-                pagination={{ pageSize: 10 }}
+                pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `共 ${total} 条` }}
                 size="small"
+                scroll={{ x: 1200 }}
                 columns={[
                   {
                     title: '客户ID',
                     dataIndex: 'customer_id',
                     key: 'customer_id',
+                    width: 200,
+                    fixed: 'left' as const,
+                    ellipsis: true,
                     render: (customerId: string) => (
                       <Button 
                         type="link" 
                         onClick={() => fetchLifecyclePrediction(customerId)}
                         loading={lifecycleLoading}
+                        style={{ padding: 0, fontSize: '12px' }}
                       >
-                        {customerId}
+                        <span style={{ maxWidth: '180px', display: 'inline-block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {customerId}
+                        </span>
                       </Button>
                     )
+                  },
+                  {
+                    title: '首次购买时间',
+                    dataIndex: 'first_order_date',
+                    key: 'first_order_date',
+                    width: 160,
+                    render: (date: string) => date ? dayjs(date).format('YYYY-MM-DD HH:mm') : '-',
+                    sorter: (a: any, b: any) => {
+                      if (!a.first_order_date) return 1;
+                      if (!b.first_order_date) return -1;
+                      return new Date(a.first_order_date).getTime() - new Date(b.first_order_date).getTime();
+                    }
                   },
                   {
                     title: '最后订单时间',
                     dataIndex: 'last_order_date',
                     key: 'last_order_date',
-                    render: (date: string) => new Date(date).toLocaleString()
+                    width: 160,
+                    render: (date: string) => date ? dayjs(date).format('YYYY-MM-DD HH:mm') : '-',
+                    sorter: (a: any, b: any) => {
+                      if (!a.last_order_date) return 1;
+                      if (!b.last_order_date) return -1;
+                      return new Date(a.last_order_date).getTime() - new Date(b.last_order_date).getTime();
+                    }
                   },
                   {
                     title: '距今天数',
                     dataIndex: 'days_since_last_order',
                     key: 'days_since_last_order',
+                    width: 110,
+                    align: 'right' as const,
                     render: (days: number) => (
                       <Tag color={days > 30 ? 'red' : days > 15 ? 'orange' : 'green'}>
                         {days} 天
                       </Tag>
-                    )
+                    ),
+                    sorter: (a: any, b: any) => a.days_since_last_order - b.days_since_last_order,
+                    filters: [
+                      { text: '0-15天', value: '0-15' },
+                      { text: '16-30天', value: '16-30' },
+                      { text: '31-60天', value: '31-60' },
+                      { text: '60天以上', value: '60+' }
+                    ],
+                    onFilter: (value: any, record: any) => {
+                      const days = record.days_since_last_order;
+                      if (value === '0-15') return days >= 0 && days <= 15;
+                      if (value === '16-30') return days >= 16 && days <= 30;
+                      if (value === '31-60') return days >= 31 && days <= 60;
+                      if (value === '60+') return days > 60;
+                      return true;
+                    }
                   },
                   {
                     title: '风险等级',
                     dataIndex: 'churn_risk_level',
                     key: 'churn_risk_level',
+                    width: 100,
+                    filters: [
+                      { text: '高风险', value: '高风险' },
+                      { text: '中风险', value: '中风险' },
+                      { text: '低风险', value: '低风险' }
+                    ],
+                    onFilter: (value: any, record: any) => record.churn_risk_level === value,
                     render: (level: string) => (
                       <Tag color={level === '高风险' ? 'red' : level === '中风险' ? 'orange' : 'green'}>
                         {level}
@@ -1447,19 +3117,44 @@ const CustomerProfile: React.FC = () => {
                   {
                     title: '历史订单数',
                     dataIndex: 'total_orders',
-                    key: 'total_orders'
+                    key: 'total_orders',
+                    width: 110,
+                    align: 'right' as const,
+                    sorter: (a: any, b: any) => a.total_orders - b.total_orders
                   },
                   {
                     title: '历史消费',
                     dataIndex: 'total_spent',
                     key: 'total_spent',
-                    render: (value: number) => `¥${value?.toFixed(2) || '0.00'}`
+                    width: 120,
+                    align: 'right' as const,
+                    render: (value: number) => <span style={{ color: '#1890ff', fontWeight: 500 }}>¥{Number(value || 0).toFixed(2)}</span>,
+                    sorter: (a: any, b: any) => a.total_spent - b.total_spent
                   },
                   {
                     title: '平均订单价值',
                     dataIndex: 'avg_order_value',
                     key: 'avg_order_value',
-                    render: (value: number) => `¥${value?.toFixed(2) || '0.00'}`
+                    width: 120,
+                    align: 'right' as const,
+                    render: (value: number) => `¥${Number(value || 0).toFixed(2)}`,
+                    sorter: (a: any, b: any) => a.avg_order_value - b.avg_order_value
+                  },
+                  {
+                    title: '购买频率',
+                    dataIndex: 'avg_purchase_interval_days',
+                    key: 'avg_purchase_interval_days',
+                    width: 110,
+                    align: 'center' as const,
+                    render: (val: number) => {
+                      if (!val || val === 0) return '-';
+                      return <Tag color="blue">≈{Math.ceil(val)}天/次</Tag>;
+                    },
+                    sorter: (a: any, b: any) => {
+                      const valA = a.avg_purchase_interval_days || 0;
+                      const valB = b.avg_purchase_interval_days || 0;
+                      return valA - valB;
+                    }
                   }
                 ]}
               />
@@ -1562,7 +3257,26 @@ const CustomerProfile: React.FC = () => {
 
       {/* 订单详细信息弹窗 */}
       <Modal
-        title={`订单详情`}
+        title={
+          <Space>
+            <span>订单详情</span>
+            <Dropdown
+              menu={{
+                items: EXPORT_MENU_ITEMS,
+                onClick: ({ key }) => handleExportOrderGoods(key as ExportFormat),
+              }}
+              trigger={['click']}
+            >
+              <Button
+                icon={<DownloadOutlined />}
+                loading={goodsExportLoading}
+                disabled={!orderDetail || !orderDetail?.goods?.length}
+              >
+                导出
+              </Button>
+            </Dropdown>
+          </Space>
+        }
         open={orderDetailVisible}
         onCancel={() => setOrderDetailVisible(false)}
         width={1000}

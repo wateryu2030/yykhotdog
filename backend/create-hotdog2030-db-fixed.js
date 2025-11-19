@@ -319,8 +319,19 @@ async function createHotdog2030Database() {
 
     console.log('✅ 示例数据插入完成！\n');
 
+    // 7. 执行初始化后数据同步（利润更新和门店成立时间）
+    console.log('=== 执行初始化后数据同步 ===');
+    try {
+      const { postInitDataSync } = require('./post-init-data-sync');
+      // 传递现有的 pool 连接，避免重复连接
+      await postInitDataSync(pool);
+    } catch (error) {
+      console.error('⚠️  初始化后数据同步失败（可稍后手动执行）:', error.message);
+      console.log('   提示: 可以稍后运行 node backend/post-init-data-sync.js 来执行数据同步');
+    }
+
     await pool.close();
-    console.log('🎉 hotdog2030 数据库创建完成！');
+    console.log('\n🎉 hotdog2030 数据库创建完成！');
 
   } catch (error) {
     console.error('❌ 数据库创建失败:', error);

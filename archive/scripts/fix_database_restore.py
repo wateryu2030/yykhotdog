@@ -12,12 +12,12 @@ def delete_database(db_name):
     """删除数据库"""
     print(f"🗑️  删除数据库: {db_name}")
     try:
-        cmd = [
-            "~/.homebrew/bin/aliyun", "rds", "DeleteDatabase",
-            "--region", "cn-shanghai",
-            "--DBInstanceId", "rm-uf660d00xovkm3067",
-            "--DBName", db_name
-        ]
+        cmd = (
+            f"aliyun rds DeleteDatabase "
+            f"--region cn-hangzhou "
+            f"--DBInstanceId rm-uf660d00xovkm30678o "
+            f"--DBName {db_name}"
+        )
         
         result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
         if result.returncode == 0:
@@ -34,14 +34,14 @@ def create_restore_task(db_name, backup_file):
     """创建恢复任务"""
     print(f"🔄 创建恢复任务: {db_name}")
     try:
-        cmd = [
-            "~/.homebrew/bin/aliyun", "rds", "CreateDatabaseRestoreTask",
-            "--region", "cn-shanghai",
-            "--DBInstanceId", "rm-uf660d00xovkm3067",
-            "--DatabaseName", db_name,
-            "--BackupFile", f"oss://yykhotdog-backup-shanghai/backups/{backup_file}",
-            "--RestoreType", "OPEN_DATABASE"
-        ]
+        cmd = (
+            "aliyun rds CreateDatabaseRestoreTask "
+            "--region cn-hangzhou "
+            "--DBInstanceId rm-uf660d00xovkm30678o "
+            f"--DatabaseName {db_name} "
+            f"--BackupFile oss://yykhotdog-backup-temp/backups/{backup_file} "
+            "--RestoreType OPEN_DATABASE"
+        )
         
         result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
         print(f"  🔍 命令输出: {result.stdout}")
@@ -70,12 +70,12 @@ def check_restore_status(task_id):
     """检查恢复状态"""
     print(f"🔍 检查恢复状态: {task_id}")
     try:
-        cmd = [
-            "~/.homebrew/bin/aliyun", "rds", "DescribeDBInstanceRestoreTask",
-            "--region", "cn-shanghai",
-            "--DBInstanceId", "rm-uf660d00xovkm3067",
-            "--TaskId", task_id
-        ]
+        cmd = (
+            "aliyun rds DescribeDBInstanceRestoreTask "
+            "--region cn-hangzhou "
+            "--DBInstanceId rm-uf660d00xovkm30678o "
+            f"--TaskId {task_id}"
+        )
         
         result = subprocess.run(cmd, capture_output=True, text=True, shell=True)
         if result.returncode == 0:
@@ -97,8 +97,8 @@ def main():
     
     # 要处理的数据库
     databases = [
-        {"name": "cyrg2025", "backup": "cyrg2025-10-24.bak"},
-        {"name": "cyrgweixin", "backup": "zhkj2025-10-24.bak"}
+        {"name": "cyrg2025", "backup": "cyrg20251117.bak"},
+        {"name": "cyrgweixin", "backup": "zhkj20251117.bak"}
     ]
     
     task_ids = []

@@ -57,8 +57,8 @@ def main():
     
     # 备份文件和目标数据库
     restore_tasks = [
-        ('backups/cyrg2025-10-27.bak', 'cyrg2025'),
-        ('backups/zhkj2025-10-27.bak', 'cyrgweixin')
+        ('backups/cyrg20251117.bak', 'cyrg2025'),
+        ('backups/zhkj20251117.bak', 'cyrgweixin')
     ]
     
     success_count = 0

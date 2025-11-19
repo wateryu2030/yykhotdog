@@ -48,10 +48,16 @@ interface CandidateLocation {
   approval_remarks: string;
   status: string;
   analysis_score?: number;
+  poi_density_score?: number;
+  traffic_score?: number;
+  population_score?: number;
+  competition_score?: number;
+  rental_cost_score?: number;
   predicted_revenue?: number;
   confidence_score?: number;
   success_probability?: number;
   risk_level?: string;
+  photo_url?: string;
   record_time: string;
   created_at: string;
 }

@@ -34,6 +34,7 @@ import dataQualityRoutes from './routes/dataQuality';
 import productProfileRoutes from './routes/productProfile';
 import aiDashboardRoutes from './routes/aiDashboard';
 import siteSelectionRoutes from './routes/siteSelection';
+import enhancedAIAnalysisRoutes from './routes/enhancedAIAnalysis';
 
 // 加载环境变量 - 修复路径
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
@@ -114,6 +115,7 @@ app.use('/api/data-quality', dataQualityRoutes);
 app.use('/api/product-profile', productProfileRoutes);
 app.use('/api/ai-dashboard', aiDashboardRoutes);
 app.use('/api/site-selection', siteSelectionRoutes);
+app.use('/api/enhanced-ai-analysis', enhancedAIAnalysisRoutes);
 
 // 错误处理
 app.use(notFoundHandler);

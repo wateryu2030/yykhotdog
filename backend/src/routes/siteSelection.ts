@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { logger } from '../utils/logger';
-import { EnhancedSiteSelectionService } from '../services/SiteSelectionService';
+import { SiteSelectionService, EnhancedSiteSelectionService } from '../services/SiteSelectionService';
 import { MLSiteSelectionService } from '../services/MLSiteSelectionService';
 import { SiteSelection } from '../models/SiteSelection';
 import { sequelize } from '../config/database';
 import { QueryTypes } from 'sequelize';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -674,7 +674,7 @@ router.get('/candidates', async (req: Request, res: Response) => {
       replacements.status = status;
     }
     
-    // 查询数据
+    // 查询意向铺位数据
     const records = await sequelize.query(`
       SELECT 
         id,
@@ -692,6 +692,11 @@ router.get('/candidates', async (req: Request, res: Response) => {
         approval_remarks,
         status,
         analysis_score,
+        poi_density_score,
+        traffic_score,
+        population_score,
+        competition_score,
+        rental_cost_score,
         predicted_revenue,
         confidence_score,
         success_probability,
@@ -707,6 +712,33 @@ router.get('/candidates', async (req: Request, res: Response) => {
       replacements: { ...replacements, offset, limit },
       type: QueryTypes.SELECT
     });
+
+    // 尝试补充铺位照片（Shop表存在时才会返回）
+    const photoMap: Record<string, string> = {};
+    try {
+      const photoRows = await sequelize.query(`
+        SELECT 
+          ShopName as shop_name,
+          FirstImg as photo_url
+        FROM Shop
+        WHERE ISNULL(Delflag, 0) = 0
+      `, { type: QueryTypes.SELECT });
+
+      (photoRows as any[]).forEach(row => {
+        const name = (row as any).shop_name;
+        const url = (row as any).photo_url;
+        if (name && url) {
+          photoMap[String(name).trim()] = url;
+        }
+      });
+    } catch (photoError) {
+      logger.warn('Shop表不可用，暂无法补充铺位照片:', photoError instanceof Error ? photoError.message : photoError);
+    }
+
+    const finalRecords = (records as any[]).map(record => ({
+      ...record,
+      photo_url: photoMap[record.shop_name] || null
+    }));
     
     // 查询总数
     const totalResult = await sequelize.query(`
@@ -724,7 +756,7 @@ router.get('/candidates', async (req: Request, res: Response) => {
     res.json({
       success: true,
       data: {
-        records,
+        records: finalRecords,
         pagination: {
           page,
           limit,

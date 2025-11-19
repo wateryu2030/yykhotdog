@@ -16,8 +16,8 @@ bucket_name = 'yykhotdog-backup-temp'
 # 备份文件
 backup_dir = Path("/Users/apple/Ahope/yykhotdog/database")
 backup_files = [
-    ('cyrg2025-10-27.bak', 'cyrg2025'),
-    ('zhkj2025-10-27.bak', 'cyrgweixin')
+    ('cyrg20251117.bak', 'cyrg2025'),
+    ('zhkj20251117.bak', 'cyrgweixin')
 ]
 
 def upload_to_oss():
@@ -79,7 +79,7 @@ aliyun rds DescribeDBInstances --DBInstanceId rm-uf660d00xovkm30678o --RegionId 
 #   a. 选择实例: rm-uf660d00xovkm30678o
 #   b. 进入"备份恢复" -> "数据恢复"
 #   c. 选择"从OSS恢复"
-#   d. 选择备份文件: oss://yykhotdog-backup-temp/backups/cyrg2025-10-27.bak
+#   d. 选择备份文件: oss://yykhotdog-backup-temp/backups/cyrg20251117.bak
 #   e. 恢复为数据库: cyrg2025
 #   f. 执行恢复
 
@@ -87,7 +87,7 @@ aliyun rds DescribeDBInstances --DBInstanceId rm-uf660d00xovkm30678o --RegionId 
 #   a. 选择实例: rm-uf660d00xovkm30678o
 #   b. 进入"备份恢复" -> "数据恢复"
 #   c. 选择"从OSS恢复"
-#   d. 选择备份文件: oss://yykhotdog-backup-temp/backups/zhkj2025-10-27.bak
+#   d. 选择备份文件: oss://yykhotdog-backup-temp/backups/zhkj20251117.bak
 #   e. 恢复为数据库: cyrgweixin
 #   f. 执行恢复
 

@@ -340,6 +340,7 @@ class AmapService {
 
   /**
    * 获取学校详细信息（包括学生人数等）
+   * 使用AI服务获取准确的学校信息
    */
   async getSchoolDetails(
     schoolName: string,
@@ -350,14 +351,166 @@ class AmapService {
     established_year: number;
     school_level: string;
   }> {
-    // 这里可以集成AI服务来获取更详细的学校信息
-    // 目前返回模拟数据
+    try {
+      // 导入多AI服务
+      const { multiAIService } = await import('./MultiAIService');
+      
+      if (!multiAIService.hasAvailableModel()) {
+        logger.warn('AI服务不可用，使用估算数据');
+        return this.getEstimatedSchoolDetails(schoolName, address);
+      }
+
+      // 使用AI获取学校详细信息
+      const prompt = `请查询以下学校的真实信息，包括学生人数、教师人数、建校年份和学校等级。请基于公开信息或合理估算，不要编造数据。
+
+学校名称：${schoolName}
+学校地址：${address}
+
+请用JSON格式返回，格式如下：
+{
+  "student_count": 学生人数（整数，如果没有确切数据请估算，初中一般300-1500人，高中一般500-2000人，小学一般200-1000人，大学一般1000-30000人）,
+  "teacher_count": 教师人数（整数，如果没有确切数据请估算，一般按学生人数的1/15到1/20估算）,
+  "established_year": 建校年份（整数，4位数年份，如1990）,
+  "school_level": 学校等级（字符串，如"重点"、"普通"、"示范"等，如果不知道可以写"普通"）
+}
+
+如果无法获取准确信息，请根据学校类型和名称进行合理估算。`;
+
+      const result = await multiAIService.chatCompletion([
+        {
+          role: 'system',
+          content: '你是一个专业的学校信息查询助手，擅长根据学校名称和地址查询或估算学校的真实信息。'
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ], {
+        temperature: 0.3, // 降低温度以获得更准确的数据
+        maxTokens: 300
+      });
+
+      // 解析AI返回的JSON
+      const content = result.content.trim();
+      let aiData: any = {};
+      
+      // 尝试提取JSON
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          aiData = JSON.parse(jsonMatch[0]);
+        } catch (parseError) {
+          logger.warn('解析AI返回的JSON失败:', parseError);
+        }
+      }
+
+      // 验证和修正数据
+      const student_count = this.validateStudentCount(aiData.student_count, schoolName);
+      const teacher_count = this.validateTeacherCount(aiData.teacher_count, student_count);
+      const established_year = this.validateYear(aiData.established_year);
+      const school_level = aiData.school_level || '普通';
+
+      logger.info(`✅ 使用 ${result.model} 获取学校信息: ${schoolName} - 学生${student_count}人，教师${teacher_count}人`);
+
+      return {
+        student_count,
+        teacher_count,
+        established_year,
+        school_level
+      };
+    } catch (error) {
+      logger.error(`获取学校详细信息失败 (${schoolName}):`, error);
+      // 失败时返回估算数据
+      return this.getEstimatedSchoolDetails(schoolName, address);
+    }
+  }
+
+  /**
+   * 根据学校名称和类型估算学校信息（备用方案）
+   */
+  private getEstimatedSchoolDetails(
+    schoolName: string,
+    address: string
+  ): {
+    student_count: number;
+    teacher_count: number;
+    established_year: number;
+    school_level: string;
+  } {
+    // 根据学校名称判断类型
+    let estimatedStudents = 500;
+    let estimatedTeachers = 30;
+    
+    if (schoolName.includes('小学')) {
+      estimatedStudents = Math.floor(Math.random() * 600) + 200; // 200-800人
+      estimatedTeachers = Math.floor(estimatedStudents / 18);
+    } else if (schoolName.includes('初中') || schoolName.includes('中学') && !schoolName.includes('高中')) {
+      estimatedStudents = Math.floor(Math.random() * 1000) + 300; // 300-1300人
+      estimatedTeachers = Math.floor(estimatedStudents / 15);
+    } else if (schoolName.includes('高中')) {
+      estimatedStudents = Math.floor(Math.random() * 1200) + 500; // 500-1700人
+      estimatedTeachers = Math.floor(estimatedStudents / 12);
+    } else if (schoolName.includes('大学')) {
+      estimatedStudents = Math.floor(Math.random() * 20000) + 2000; // 2000-22000人
+      estimatedTeachers = Math.floor(estimatedStudents / 20);
+    } else {
+      // 默认估算
+      estimatedStudents = Math.floor(Math.random() * 800) + 300; // 300-1100人
+      estimatedTeachers = Math.floor(estimatedStudents / 15);
+    }
+
     return {
-      student_count: Math.floor(Math.random() * 2000) + 100, // 100-2100人
-      teacher_count: Math.floor(Math.random() * 100) + 20, // 20-120人
+      student_count: estimatedStudents,
+      teacher_count: Math.max(estimatedTeachers, 20), // 至少20人
       established_year: Math.floor(Math.random() * 50) + 1970, // 1970-2020年
-      school_level: Math.random() > 0.7 ? '重点' : '普通',
+      school_level: (schoolName.includes('重点') || schoolName.includes('实验') || schoolName.includes('示范')) ? '重点' : '普通',
     };
+  }
+
+  /**
+   * 验证学生人数是否合理
+   */
+  private validateStudentCount(count: any, schoolName: string): number {
+    if (typeof count === 'number' && count > 0 && count < 50000) {
+      return Math.floor(count);
+    }
+    
+    // 如果AI返回的数据不合理，根据学校类型估算
+    if (schoolName.includes('小学')) {
+      return Math.floor(Math.random() * 600) + 200;
+    } else if (schoolName.includes('初中') || (schoolName.includes('中学') && !schoolName.includes('高中'))) {
+      return Math.floor(Math.random() * 1000) + 300;
+    } else if (schoolName.includes('高中')) {
+      return Math.floor(Math.random() * 1200) + 500;
+    } else if (schoolName.includes('大学')) {
+      return Math.floor(Math.random() * 20000) + 2000;
+    }
+    
+    return Math.floor(Math.random() * 800) + 300;
+  }
+
+  /**
+   * 验证教师人数是否合理
+   */
+  private validateTeacherCount(count: any, studentCount: number): number {
+    if (typeof count === 'number' && count > 0 && count < 5000) {
+      return Math.floor(count);
+    }
+    
+    // 根据学生人数估算（师生比约1:15）
+    return Math.max(20, Math.floor(studentCount / 15));
+  }
+
+  /**
+   * 验证建校年份是否合理
+   */
+  private validateYear(year: any): number {
+    if (typeof year === 'number' && year >= 1900 && year <= new Date().getFullYear()) {
+      return Math.floor(year);
+    }
+    
+    // 默认返回1970-2020之间的随机年份
+    return Math.floor(Math.random() * 50) + 1970;
   }
 }
 

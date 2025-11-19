@@ -20,10 +20,11 @@ echo "4. 执行数据库恢复..."
 
 # 恢复cyrg2025数据库
 echo "恢复cyrg2025数据库..."
-docker exec -it yykhotdog_sqlcmd sqlcmd \
-  -S rm-uf660d00xovkm3067.sqlserver.rds.aliyuncs.com,1433 \
+docker exec -it yykhotdog_sqlcmd /opt/mssql-tools/bin/sqlcmd \
+  -S rm-uf660d00xovkm30678o.sqlserver.rds.aliyuncs.com,1433 \
   -U hotdog \
   -P 'Zhkj@62102218' \
+  -C \
   -Q "
 IF EXISTS (SELECT name FROM sys.databases WHERE name = 'cyrg2025')
 BEGIN
@@ -32,41 +33,43 @@ BEGIN
 END
 
 RESTORE DATABASE [cyrg2025] 
-FROM DISK = '/backup/cyrg2025-10-24.bak'
+FROM DISK = '/backup/cyrg20251117.bak'
 WITH REPLACE;
 "
 
-# 恢复hotdog2030数据库
-echo "恢复hotdog2030数据库..."
-docker exec -it yykhotdog_sqlcmd sqlcmd \
-  -S rm-uf660d00xovkm3067.sqlserver.rds.aliyuncs.com,1433 \
+# 恢复cyrgweixin数据库
+echo "恢复cyrgweixin数据库..."
+docker exec -it yykhotdog_sqlcmd /opt/mssql-tools/bin/sqlcmd \
+  -S rm-uf660d00xovkm30678o.sqlserver.rds.aliyuncs.com,1433 \
   -U hotdog \
   -P 'Zhkj@62102218' \
+  -C \
   -Q "
-IF EXISTS (SELECT name FROM sys.databases WHERE name = 'hotdog2030')
+IF EXISTS (SELECT name FROM sys.databases WHERE name = 'cyrgweixin')
 BEGIN
-    ALTER DATABASE [hotdog2030] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
-    DROP DATABASE [hotdog2030];
+    ALTER DATABASE [cyrgweixin] SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+    DROP DATABASE [cyrgweixin];
 END
 
-RESTORE DATABASE [hotdog2030] 
-FROM DISK = '/backup/zhkj2025-10-24.bak'
+RESTORE DATABASE [cyrgweixin] 
+FROM DISK = '/backup/zhkj20251117.bak'
 WITH REPLACE;
 "
 
 # 验证恢复结果
 echo "5. 验证恢复结果..."
-docker exec -it yykhotdog_sqlcmd sqlcmd \
-  -S rm-uf660d00xovkm3067.sqlserver.rds.aliyuncs.com,1433 \
+docker exec -it yykhotdog_sqlcmd /opt/mssql-tools/bin/sqlcmd \
+  -S rm-uf660d00xovkm30678o.sqlserver.rds.aliyuncs.com,1433 \
   -U hotdog \
   -P 'Zhkj@62102218' \
+  -C \
   -Q "
 SELECT 
     name as '数据库名称',
     database_id as '数据库ID',
     create_date as '创建日期'
 FROM sys.databases 
-WHERE name IN ('cyrg2025', 'hotdog2030')
+WHERE name IN ('cyrg2025', 'cyrgweixin')
 ORDER BY name;
 "
 

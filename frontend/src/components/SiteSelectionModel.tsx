@@ -1,15 +1,18 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { 
-  Card, Row, Col, Button, message, Divider, Typography, Space, Spin, Alert, Tag, Table 
+  Card, Row, Col, Button, message, Divider, Typography, Space, Spin, Alert, Tag, Table, 
+  Modal, Checkbox, List, Descriptions, Empty 
 } from 'antd';
 import { 
   InfoCircleOutlined, DownloadOutlined, FileExcelOutlined, ReloadOutlined, 
-  EnvironmentOutlined, SaveOutlined 
+  EnvironmentOutlined, SaveOutlined, CheckCircleOutlined, CloseCircleOutlined,
+  EyeOutlined, StarOutlined, UnorderedListOutlined, SyncOutlined
 } from '@ant-design/icons';
 import { amapPOIService } from '../services/amapService';
 import { schoolAnalysisService } from '../services/schoolAnalysisService';
 import { SchoolAnalysisResult } from '../types/schoolAnalysis';
 import SchoolCenteredAnalysis from './SchoolCenteredAnalysis';
+import { AMAP_CONFIG } from '../config/amap';
 // import CityRegionSelector from './common/CityRegionSelector';
 // import InteractiveMap from './InteractiveMap';
 import * as XLSX from 'xlsx';
@@ -110,6 +113,7 @@ interface AnalysisResult {
 interface SiteSelectionModelProps {
   selectedRegionCodes?: string[]; // 外部传入的地区代码
   selectedRegionNames?: string[]; // 外部传入的地区名称
+  showCityMapOnly?: boolean; // 是否只显示城市地图（用于城市地图Tab）
 }
 
 // ========================== 2. 常量定义区 ==========================
@@ -176,22 +180,46 @@ const NAV_PROVIDERS = {
 // ========================== 3. 组件核心 ==========================
 const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({ 
   selectedRegionCodes = [], 
-  selectedRegionNames: propSelectedRegionNames = [] 
+  selectedRegionNames: propSelectedRegionNames = [],
+  showCityMapOnly = false
 }) => {
   // ========================== 3.1 状态管理 ==========================
-  const [selectedRegion, setSelectedRegion] = useState<string[]>([]);
-  const [selectedRegionNames, setSelectedRegionNames] = useState<string[]>(propSelectedRegionNames);
+  const [selectedRegion, setSelectedRegion] = useState<string[]>(selectedRegionCodes || []);
+  const [selectedRegionNames, setSelectedRegionNames] = useState<string[]>(propSelectedRegionNames || []);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisMessage, setAnalysisMessage] = useState<string>('');
   const [cityName, setCityName] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [mapLoaded, setMapLoaded] = useState<boolean>(false);
+  const [mapError, setMapError] = useState<string>('');
+  const mapRef = useRef<HTMLDivElement>(null);
+  const amapRef = useRef<any>(null);
   const [pageSize, setPageSize] = useState(20);
   
   // 增强AI分析相关状态
   const [enhancedAIAnalysis, setEnhancedAIAnalysis] = useState<EnhancedAIAnalysis | null>(null);
   const [enhancedAILoading, setEnhancedAILoading] = useState(false);
   const [enhancedAIError, setEnhancedAIError] = useState<string | null>(null);
+  
+  // 保存功能相关状态
+  const [selectedSchoolIds, setSelectedSchoolIds] = useState<Set<string>>(new Set());
+  const [savingSchools, setSavingSchools] = useState(false);
+  const [saveModalVisible, setSaveModalVisible] = useState(false);
+  
+  // 学校详情相关状态
+  const [selectedSchoolDetail, setSelectedSchoolDetail] = useState<SchoolItem | null>(null);
+  const [schoolDetailModalVisible, setSchoolDetailModalVisible] = useState(false);
+  
+  // 推荐位置相关状态
+  const [recommendationListVisible, setRecommendationListVisible] = useState(false);
+  const [selectedRecommendation, setSelectedRecommendation] = useState<any>(null);
+  
+  // 用户选中的铺位（用于城市地图显示）
+  const [selectedShops, setSelectedShops] = useState<SchoolItem[]>([]);
+  
+  // 刷新学校数据相关状态
+  const [refreshingSchools, setRefreshingSchools] = useState(false);
 
   // ========================== 3.2 工具函数（缓存优化） ==========================
   /**
@@ -250,34 +278,68 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
   // ========================== 3.3 数据获取函数 ==========================
   /**
    * 获取城市名称（优先从内部状态提取，失败则调用API）
+   * 优化处理：确保省和区县名称准确，城市名称根据实际情况调整
    */
   const getCityName = useCallback(async (provinceCode: string, cityCode: string) => {
     try {
       // 1. 优先从内部地区名称状态提取
       if (selectedRegionNames.length >= 2) {
-        let targetCity = selectedRegionNames[1];
+        const provinceName = selectedRegionNames[0]; // 省份名称（保证准确）
+        const secondLevel = selectedRegionNames[1]; // 第二级（可能是市或特殊行政区划）
+        const thirdLevel = selectedRegionNames.length >= 3 ? selectedRegionNames[2] : ''; // 第三级（区县）
         
-        // 特殊处理：直辖市（如北京市/市辖区 → 北京市）
-        if (targetCity === '市辖区') targetCity = selectedRegionNames[0];
-        // 特殊处理：省直辖县级行政区划（如湖北省/省直辖县级行政区划/仙桃市 → 仙桃市）
-        else if (targetCity === '省直辖县级行政区划' && selectedRegionNames.length >= 3) {
-          targetCity = selectedRegionNames[2];
+        let targetCity = secondLevel;
+        
+        // 特殊处理：直辖市（如北京市/市辖区/西城区 → 城市=北京市）
+        if (secondLevel === '市辖区' || secondLevel === '县') {
+          targetCity = provinceName; // 直辖市：使用省份名称作为城市
+          console.log('✅ 检测到直辖市，使用省份名称作为城市:', targetCity);
+        } 
+        // 特殊处理：省管县（如湖北省/省直辖县级行政区划/仙桃市 → 城市=仙桃市）
+        else if (secondLevel === '省直辖县级行政区划' || secondLevel === '省直辖县') {
+          if (thirdLevel) {
+            targetCity = thirdLevel; // 省管县：使用区县名称作为城市
+            console.log('✅ 检测到省管县，使用区县名称作为城市:', targetCity);
+          } else {
+            targetCity = provinceName; // 如果还没有选择到区县级别，暂时使用省份名称
+            console.log('⚠️ 检测到省管县但未选择区县，暂时使用省份名称:', targetCity);
+          }
         }
-          // 其他直辖情况
-        else if (targetCity.includes('直辖') || !targetCity) {
-          targetCity = selectedRegionNames[0];
+        // 其他特殊情况：包含"直辖"关键词
+        else if (secondLevel && (secondLevel.includes('直辖') || secondLevel === '')) {
+          if (thirdLevel) {
+            targetCity = thirdLevel; // 尝试使用第三级
+          } else {
+            targetCity = provinceName; // 否则使用省份名称
+          }
+          console.log('✅ 检测到特殊行政区划，调整城市名称:', targetCity);
+        }
+        // 正常情况：第二级就是城市名称
+        else if (targetCity && targetCity !== '') {
+          // 保持原样
+          console.log('✅ 使用第二级作为城市名称:', targetCity);
+        }
+        // 如果第二级为空，使用省份名称
+        else {
+          targetCity = provinceName;
+          console.log('⚠️ 第二级为空，使用省份名称作为城市:', targetCity);
         }
 
         if (targetCity) {
           setCityName(targetCity);
-          console.log('✅ 从内部状态获取城市名称:', targetCity);
+          console.log('✅ 从内部状态获取城市名称:', targetCity, {
+            province: provinceName,
+            secondLevel,
+            thirdLevel,
+            finalCity: targetCity
+          });
           return;
         }
       }
       
       // 2. Props提取失败时调用API
       console.log('🔍 从API获取城市名称...');
-      const res = await fetch(`http://localhost:3001/api/region/cascade?level=2&parentCode=${provinceCode}`);
+      const res = await fetch(`/api/region/cascade?level=2&parentCode=${provinceCode}`);
       const data = await res.json();
       
       if (data.success && data.data) {
@@ -286,7 +348,17 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
         );
         
         if (cityData) {
-          const finalCity = cityData.label || cityData.name || cityData.value;
+          let finalCity = cityData.label || cityData.name || cityData.value;
+          
+          // API返回的数据也需要特殊处理
+          if (finalCity === '市辖区' || finalCity === '县') {
+            // 直辖市：从selectedRegionNames获取省份名称
+            finalCity = selectedRegionNames[0] || finalCity;
+          } else if (finalCity === '省直辖县级行政区划' || finalCity === '省直辖县') {
+            // 省管县：从selectedRegionNames获取区县名称
+            finalCity = selectedRegionNames[2] || selectedRegionNames[0] || finalCity;
+          }
+          
           setCityName(finalCity);
           console.log('✅ 从API获取城市名称:', finalCity);
         } else {
@@ -301,7 +373,7 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       console.error('❌ 获取城市名称异常:', err);
       setCityName('未知城市');
     }
-  }, [selectedRegionNames]);
+  }, [selectedRegionNames, propSelectedRegionNames]);
 
   /**
    * 获取增强AI学校分析数据
@@ -398,37 +470,265 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
   }, [cityName, selectedRegionNames]);
 
   /**
-   * 保存所有分析结果到数据库
+   * 保存选中的学校到数据库
    */
-  const saveAllToDB = useCallback(async () => {
-    if (!enhancedAIAnalysis?.schools.length) {
-      message.warning('暂无分析数据可保存');
+  const saveSelectedSchoolsToDB = useCallback(async (schoolIds: string[]) => {
+    if (!analysisResult?.schools || schoolIds.length === 0) {
+      message.warning('请选择要保存的学校');
       return;
     }
 
-    setEnhancedAILoading(true);
+    setSavingSchools(true);
     
     try {
-      // 1. 保存学校分析数据
-        await fetchEnhancedAIAnalysis(true);
-      
-      // 2. 保存商业环境数据（未保存过才执行）
-      const needSaveBusiness = enhancedAIAnalysis.businessEnvironment && 
-        !enhancedAIAnalysis.businessEnvironment.savedToDB;
-      
-      if (needSaveBusiness) {
-        const poiList = enhancedAIAnalysis.schools.slice(0, 10).map(school => school.name);
-        await analyzeBusinessEnv(poiList, true);
+      const schoolsToSave = analysisResult.schools.filter(school => 
+        schoolIds.includes(school.id?.toString() || '')
+      );
+
+      // 调用批量保存API
+      const schoolDataList = schoolsToSave.map(school => ({
+        id: school.id,
+        name: school.name,
+        type: school.type,
+        address: school.address,
+        longitude: school.longitude,
+        latitude: school.latitude,
+        student_count: school.student_count,
+        teacher_count: school.teacher_count,
+        businessValue: school.businessValue,
+        aiAnalysis: school.aiAnalysis,
+        city: cityName,
+        province: selectedRegionNames[0] || '',
+        district: selectedRegionNames[2] || ''
+      }));
+
+      const res = await fetch('/api/enhanced-ai-analysis/save-schools', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schoolIds: schoolIds,
+          schoolDataList: schoolDataList
+        })
+      });
+
+      const result = await res.json();
+
+      if (!res.ok || !result.success) {
+        throw new Error(result.message || '保存失败');
       }
       
-      message.success('所有分析结果已保存到数据库');
+      message.success(`成功保存 ${schoolIds.length} 所学校到数据库`);
+      setSelectedSchoolIds(new Set()); // 清空选择
+      setSaveModalVisible(false);
     } catch (err) {
       console.error('❌ 保存数据失败:', err);
       message.error('保存分析结果失败，请重试');
     } finally {
-      setEnhancedAILoading(false);
+      setSavingSchools(false);
     }
-  }, [enhancedAIAnalysis, fetchEnhancedAIAnalysis, analyzeBusinessEnv]);
+  }, [analysisResult, cityName, selectedRegionNames]);
+
+  /**
+   * 保存所有分析结果到数据库
+   */
+  const saveAllToDB = useCallback(async () => {
+    if (!analysisResult?.schools || analysisResult.schools.length === 0) {
+      message.warning('暂无分析数据可保存');
+      return;
+    }
+
+    const allSchoolIds = analysisResult.schools.map(s => s.id?.toString() || '');
+    await saveSelectedSchoolsToDB(allSchoolIds);
+  }, [analysisResult, saveSelectedSchoolsToDB]);
+
+  /**
+   * 打开保存Modal
+   */
+  const handleOpenSaveModal = useCallback(() => {
+    if (!analysisResult?.schools || analysisResult.schools.length === 0) {
+      message.warning('暂无分析数据可保存');
+      return;
+    }
+    setSaveModalVisible(true);
+  }, [analysisResult]);
+
+  /**
+   * 处理学校选择变化
+   */
+  const handleSchoolSelectionChange = useCallback((schoolId: string, checked: boolean) => {
+    const newSelected = new Set(selectedSchoolIds);
+    if (checked) {
+      newSelected.add(schoolId);
+    } else {
+      newSelected.delete(schoolId);
+    }
+    setSelectedSchoolIds(newSelected);
+  }, [selectedSchoolIds]);
+
+  /**
+   * 全选/取消全选
+   */
+  const handleSelectAll = useCallback((checked: boolean) => {
+    if (!analysisResult?.schools) return;
+    if (checked) {
+      const allIds = new Set(analysisResult.schools.map(s => s.id?.toString() || ''));
+      setSelectedSchoolIds(allIds);
+    } else {
+      setSelectedSchoolIds(new Set());
+    }
+  }, [analysisResult]);
+
+  /**
+   * 查看学校详情并定位
+   */
+  const handleViewSchoolDetail = useCallback((school: SchoolItem) => {
+    setSelectedSchoolDetail(school);
+    setSchoolDetailModalVisible(true);
+    
+    // 在地图上定位到该学校
+    if (amapRef.current && school.longitude && school.latitude) {
+      try {
+        amapRef.current.setCenter([school.longitude, school.latitude]);
+        amapRef.current.setZoom(16);
+        
+        // 添加高亮标记
+        const marker = new window.AMap.Marker({
+          position: [school.longitude, school.latitude],
+          title: school.name,
+          content: `
+            <div style="
+              width: 40px; 
+              height: 40px; 
+              border-radius: 50%; 
+              background-color: #ff4d4f; 
+              border: 4px solid white; 
+              box-shadow: 0 2px 8px rgba(0,0,0,0.5); 
+              cursor: pointer; 
+              display: flex; 
+              align-items: center; 
+              justify-content: center; 
+              font-size: 18px;
+              color: white;
+              font-weight: bold;
+            ">
+              📍
+            </div>
+          `,
+          zIndex: 2000
+        });
+        
+        amapRef.current.add(marker);
+        
+        // 显示信息窗口
+        const infoWindow = new window.AMap.InfoWindow({
+          content: `
+            <div style="padding: 12px; min-width: 250px;">
+              <div style="font-weight: bold; color: #1890ff; margin-bottom: 8px; font-size: 16px;">
+                ${school.name}
+              </div>
+              <div style="font-size: 12px; color: #666; margin-bottom: 4px;">
+                ${school.type}
+              </div>
+              <div style="font-size: 12px; color: #666; margin-bottom: 4px;">
+                学生数: ${school.student_count?.toLocaleString() || 0}人
+              </div>
+              <div style="font-size: 12px; color: #999;">
+                ${school.address}
+              </div>
+            </div>
+          `,
+          offset: new window.AMap.Pixel(0, -40)
+        });
+        
+        infoWindow.open(amapRef.current, [school.longitude, school.latitude]);
+        
+        message.success(`已定位到 ${school.name}`);
+      } catch (error) {
+        console.error('地图定位失败:', error);
+      }
+    }
+  }, []);
+
+  /**
+   * 查看推荐位置列表
+   */
+  const handleViewRecommendations = useCallback(() => {
+    if (!analysisResult?.recommendations || analysisResult.recommendations.length === 0) {
+      message.warning('暂无推荐位置数据');
+      return;
+    }
+    setRecommendationListVisible(true);
+  }, [analysisResult]);
+
+  /**
+   * 刷新学校详细信息（使用AI重新获取学生人数、教师人数等）
+   */
+  const handleRefreshSchoolDetails = useCallback(async () => {
+    if (!analysisResult?.schools || analysisResult.schools.length === 0) {
+      message.warning('没有学校数据需要刷新');
+      return;
+    }
+
+    setRefreshingSchools(true);
+    const hideLoading = message.loading('正在刷新学校详细信息，请稍候...', 0);
+
+    try {
+      const schoolIds = analysisResult.schools.map(school => {
+        // 尝试从recordId或id获取学校ID
+        return school.recordId || school.id;
+      }).filter(id => id);
+
+      const response = await fetch('/api/enhanced-ai-analysis/refresh-school-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          city: cityName,
+          district: selectedRegionNames.length >= 3 ? selectedRegionNames[2] : undefined,
+          schoolIds: schoolIds.length > 0 ? schoolIds : undefined,
+          limit: 100
+        })
+      });
+
+      const data = await response.json();
+      hideLoading();
+
+      if (data.success) {
+        message.success(`刷新完成：成功更新 ${data.data.updated} 所学校，失败 ${data.data.failed} 所`);
+        
+        // 重新获取学校数据
+        if (cityName) {
+          await fetchEnhancedAIAnalysis(false);
+        }
+      } else {
+        message.error(data.message || '刷新失败');
+      }
+    } catch (error) {
+      hideLoading();
+      console.error('刷新学校详细信息失败:', error);
+      message.error('刷新学校详细信息失败');
+    } finally {
+      setRefreshingSchools(false);
+    }
+  }, [analysisResult, cityName, selectedRegionNames, fetchEnhancedAIAnalysis]);
+
+  /**
+   * 查看推荐位置详情（下钻）
+   */
+  const handleViewRecommendationDetail = useCallback((recommendation: any, index: number) => {
+    setSelectedRecommendation({ ...recommendation, index });
+    
+    // 如果推荐位置有坐标，在地图上定位
+    if (recommendation.location && recommendation.location.length === 2 && amapRef.current) {
+      const [lng, lat] = recommendation.location;
+      try {
+        amapRef.current.setCenter([lng, lat]);
+        amapRef.current.setZoom(15);
+        message.success(`已定位到推荐位置 ${index + 1}`);
+      } catch (error) {
+        console.error('地图定位失败:', error);
+      }
+    }
+  }, []);
 
   // ========================== 3.4 数据分析函数 ==========================
   /**
@@ -538,7 +838,7 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
   }, []);
 
   /**
-   * 生成选址推荐建议列表
+   * 生成选址推荐建议列表（返回对象数组，包含位置坐标和详细信息）
    */
   const generateRecommendations = useCallback((
     schools: SchoolItem[], 
@@ -546,41 +846,69 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
     businessEnv?: BusinessEnvAnalysis, 
     district?: string
   ) => {
-    const recommendations: string[] = [];
+    const recommendations: any[] = [];
     const totalStudents = schools.reduce((sum, s) => sum + (s.student_count || 0), 0);
     const totalTeachers = schools.reduce((sum, s) => sum + (s.teacher_count || 0), 0);
 
-    // 基础信息
-    recommendations.push(`🎯 选址建议：在${city}${district || ''}学校密集区域开设热狗店`);
-    recommendations.push(`📚 教育密度：该区域共有${schools.length}所学校，覆盖学生${totalStudents.toLocaleString()}人，教师${totalTeachers}人`);
-    recommendations.push(`💰 消费潜力：基于学生数量和师资力量，预计日客流量${Math.round(totalStudents * 0.1)}-${Math.round(totalStudents * 0.2)}人`);
+    // 按学校价值排序，选择高价值学校作为推荐位置
+    const highValueSchools = schools
+      .filter(s => s.businessValue?.level === 'high' && s.longitude && s.latitude)
+      .sort((a, b) => (b.businessValue?.score || 0) - (a.businessValue?.score || 0))
+      .slice(0, 5); // 最多5个推荐位置
 
-    // 商业环境补充
-    if (businessEnv) {
-      recommendations.push(`🏪 商业环境：${businessEnv.analysis}`);
-    }
+    // 如果没有高价值学校，使用所有有坐标的学校
+    const candidateSchools = highValueSchools.length > 0 
+      ? highValueSchools 
+      : schools.filter(s => s.longitude && s.latitude).slice(0, 5);
 
-    // 按学校类型细分建议
-    const schoolTypeCount = {
-      university: schools.filter(s => s.type === '大学').length,
-      highSchool: schools.filter(s => s.type === '高中').length,
-      primarySchool: schools.filter(s => s.type === '小学').length
-    };
+    // 为每个候选学校生成推荐位置
+    candidateSchools.forEach((school, index) => {
+      const score = school.businessValue?.score || Math.round(50 + (school.student_count || 0) / 100);
+      const advantages: string[] = [];
+      
+      if (school.student_count > 1000) {
+        advantages.push('学生人数多');
+      }
+      if (school.businessValue?.level === 'high') {
+        advantages.push('商业价值高');
+      }
+      if (school.type === '大学') {
+        advantages.push('大学市场潜力大');
+      }
 
-    if (schoolTypeCount.university > 0) {
-      recommendations.push(`🎓 大学市场：${schoolTypeCount.university}所大学，建议主打创新口味和健康理念`);
-    }
-    if (schoolTypeCount.highSchool > 0) {
-      recommendations.push(`🏫 高中市场：${schoolTypeCount.highSchool}所高中，建议提供快速服务和营养搭配`);
-    }
-    if (schoolTypeCount.primarySchool > 0) {
-      recommendations.push(`👶 小学市场：${schoolTypeCount.primarySchool}所小学，建议注重食品安全和趣味包装`);
-    }
+      recommendations.push({
+        id: `rec_${index + 1}`,
+        location: [school.longitude!, school.latitude!],
+        reason: `位于${school.name}附近，${school.type}，学生${school.student_count || 0}人`,
+        description: `推荐在${school.name}周边开设热狗店，该区域${school.type}学生${school.student_count || 0}人，商业价值${school.businessValue?.level || '中等'}`,
+        score: score,
+        advantages: advantages.length > 0 ? advantages : ['地理位置优越'],
+        disadvantages: [],
+        schoolName: school.name,
+        schoolType: school.type,
+        studentCount: school.student_count || 0
+      });
+    });
 
-    // 运营建议
-    recommendations.push('⏰ 营业时间：建议07:00-21:00，覆盖学生上下学高峰时段');
-    recommendations.push('📍 选址范围：建议在学校周边200-800米范围内，便于学生步行到达');
-    recommendations.push('🍔 产品策略：根据学生年龄结构，设计差异化菜单和促销活动');
+    // 如果没有生成任何推荐位置，生成基于区域的通用推荐
+    if (recommendations.length === 0 && schools.length > 0) {
+      // 计算学校中心点
+      const validSchools = schools.filter(s => s.longitude && s.latitude);
+      if (validSchools.length > 0) {
+        const avgLng = validSchools.reduce((sum, s) => sum + (s.longitude || 0), 0) / validSchools.length;
+        const avgLat = validSchools.reduce((sum, s) => sum + (s.latitude || 0), 0) / validSchools.length;
+
+        recommendations.push({
+          id: 'rec_general',
+          location: [avgLng, avgLat],
+          reason: `位于${city}${district || ''}学校密集区域中心`,
+          description: `🎯 选址建议：在${city}${district || ''}学校密集区域开设热狗店。📚 教育密度：该区域共有${schools.length}所学校，覆盖学生${totalStudents.toLocaleString()}人，教师${totalTeachers}人。💰 消费潜力：基于学生数量和师资力量，预计日客流量${Math.round(totalStudents * 0.1)}-${Math.round(totalStudents * 0.2)}人`,
+          score: 60,
+          advantages: ['学校密集', '人流量大'],
+          disadvantages: []
+        });
+      }
+    }
 
     return recommendations;
   }, []);
@@ -622,50 +950,87 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
    * 同步外部传入的地区数据
    */
   useEffect(() => {
-    if (selectedRegionCodes.length > 0) {
+    if (selectedRegionCodes && selectedRegionCodes.length > 0) {
       setSelectedRegion(selectedRegionCodes);
-      console.log('📥 接收外部地区数据:', { selectedRegionCodes, selectedRegionNames });
+      console.log('📥 接收外部地区数据:', { selectedRegionCodes, selectedRegionNames: propSelectedRegionNames });
 
-      // 当选择到省市两级时，自动获取城市名称
-      if (selectedRegionCodes.length >= 2) {
+      // 同步地区名称
+      if (propSelectedRegionNames && propSelectedRegionNames.length > 0) {
+        setSelectedRegionNames(propSelectedRegionNames);
+        
+        // 直接从地区名称提取城市名称，避免调用API
+        if (propSelectedRegionNames.length >= 2) {
+          const provinceName = propSelectedRegionNames[0];
+          const secondLevel = propSelectedRegionNames[1];
+          const thirdLevel = propSelectedRegionNames.length >= 3 ? propSelectedRegionNames[2] : '';
+          
+          let targetCity = secondLevel;
+          
+          // 特殊处理：直辖市
+          if (secondLevel === '市辖区' || secondLevel === '县') {
+            targetCity = provinceName;
+          } 
+          // 特殊处理：省管县
+          else if (secondLevel === '省直辖县级行政区划' || secondLevel === '省直辖县') {
+            targetCity = thirdLevel || provinceName;
+          }
+          // 其他特殊情况
+          else if (secondLevel && (secondLevel.includes('直辖') || secondLevel === '')) {
+            targetCity = thirdLevel || provinceName;
+          }
+          
+          if (targetCity && targetCity !== cityName) {
+            setCityName(targetCity);
+          }
+        }
+      }
+
+      // 当选择到省市两级时，如果还没有城市名称，才调用API
+      if (selectedRegionCodes.length >= 2 && !cityName) {
         getCityName(selectedRegionCodes[0], selectedRegionCodes[1]);
       }
+    } else {
+      // 清空状态
+      setSelectedRegion([]);
+      setSelectedRegionNames([]);
+      setCityName('');
     }
-  }, [selectedRegionCodes, selectedRegionNames, getCityName]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRegionCodes, propSelectedRegionNames]); // 移除getCityName依赖，避免循环
 
   /**
-   * 调试用：打印组件状态（开发环境用）
+   * 调试用：打印组件状态（开发环境用）- 已禁用避免无限循环
    */
-  useEffect(() => {
-    console.log('🔍 组件当前状态:', {
-      selectedRegion,
-      cityName,
-      hasAnalysisResult: !!analysisResult,
-      hasEnhancedAI: !!enhancedAIAnalysis
-    });
-  }, [selectedRegion, cityName, analysisResult, enhancedAIAnalysis]);
+  // useEffect(() => {
+  //   console.log('🔍 组件当前状态:', {
+  //     selectedRegion,
+  //     cityName,
+  //     hasAnalysisResult: !!analysisResult,
+  //     hasEnhancedAI: !!enhancedAIAnalysis
+  //   });
+  // }, [selectedRegion, cityName, analysisResult, enhancedAIAnalysis]);
 
   /**
-   * 自动加载增强AI分析（城市信息和地区选择完成后）
+   * 自动加载增强AI分析（城市信息和地区选择完成后）- 已禁用自动加载，改为手动触发
    */
-  useEffect(() => {
-    if (cityName && cityName !== '未知城市' && selectedRegion.length >= 2) {
-      // 延迟执行，避免并发请求
-      const timer = setTimeout(() => {
-        fetchEnhancedAIAnalysis();
-        
-        // 延迟1秒分析商业环境
-        const envTimer = setTimeout(() => {
-          const poiList = ['学校', '教育机构', '培训机构'];
-          analyzeBusinessEnv(poiList);
-        }, 1000);
+  // useEffect(() => {
+  //   if (cityName && cityName !== '未知城市' && selectedRegion.length >= 2) {
+  //     // 延迟执行，避免并发请求
+  //     const timer = setTimeout(() => {
+  //       fetchEnhancedAIAnalysis();
+  //       
+  //       // 延迟1秒分析商业环境
+  //       const envTimer = setTimeout(() => {
+  //         const poiList = ['学校', '教育机构', '培训机构'];
+  //         analyzeBusinessEnv(poiList);
+  //       }, 1000);
 
-        return () => clearTimeout(envTimer);
-      }, 500);
+  //       return () => clearTimeout(envTimer);
+  //     }, 500);
 
-      return () => clearTimeout(timer);
-    }
-  }, [cityName, selectedRegion, fetchEnhancedAIAnalysis, analyzeBusinessEnv]);
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, [cityName, selectedRegion, fetchEnhancedAIAnalysis, analyzeBusinessEnv]);
 
   /**
    * 处理地区选择变化
@@ -744,14 +1109,16 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       
       console.log('🔍 搜索位置:', searchLocation);
       
-      // 尝试按区县级别搜索
-      let res = await fetch(`http://localhost:3001/api/enhanced-ai-analysis/schools-with-analysis/${searchLocation}?saveToDB=false`);
+      // 尝试按区县级别搜索 - 使用URL编码
+      const encodedLocation = encodeURIComponent(searchLocation);
+      let res = await fetch(`/api/enhanced-ai-analysis/schools-with-analysis/${encodedLocation}?saveToDB=false`);
       let data = await res.json();
 
       // 处理无数据情况：尝试按城市级别搜索
       if (!data.success || data.data.length === 0) {
         setAnalysisMessage('正在尝试城市级查询...');
-        res = await fetch(`http://localhost:3001/api/enhanced-ai-analysis/schools-with-analysis/${cityName}?saveToDB=false`);
+        const encodedCity = encodeURIComponent(cityName);
+        res = await fetch(`/api/enhanced-ai-analysis/schools-with-analysis/${encodedCity}?saveToDB=false`);
         data = await res.json();
 
         if (!data.success || data.data.length === 0) {
@@ -762,19 +1129,41 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       const schools = data.data as SchoolItem[];
       console.log(`✅ 获取${schools.length}所学校数据`);
 
-      // 2. 分析商业环境
+      // 2. 分析商业环境（可选，失败不影响主流程）
       setAnalysisMessage('正在分析商业环境和市场潜力...');
       const poiList = schools.slice(0, 10).map(school => school.name);
-      const envRes = await fetch('http://localhost:3001/api/enhanced-ai-analysis/analyze-business-environment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          location: searchLocation, // 使用统一的搜索位置
-          poiList,
-          saveToDB: false
-        })
-      });
-      const envData = await envRes.json();
+      let envData: any = { success: false, data: null };
+      try {
+        // 构建完整的地址用于地理编码（避免400错误）
+        let fullLocation = searchLocation;
+        if (selectedRegionNames.length >= 1) {
+          // 如果有省份信息，拼接完整地址
+          const province = selectedRegionNames[0];
+          if (!fullLocation.includes(province)) {
+            fullLocation = `${province}${fullLocation}`;
+          }
+        }
+        
+        const envRes = await fetch('/api/enhanced-ai-analysis/analyze-business-environment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            location: fullLocation, // 使用完整地址
+            poiList,
+            saveToDB: false
+          })
+        });
+        
+        if (envRes.ok) {
+          envData = await envRes.json();
+        } else {
+          const errorText = await envRes.text();
+          console.warn('商业环境分析API返回错误:', envRes.status, errorText);
+        }
+      } catch (envError) {
+        console.warn('商业环境分析失败，继续使用学校数据:', envError);
+        // 不影响主流程，继续执行
+      }
 
       // 3. 生成分析结果
       setAnalysisMessage('正在生成选址建议和热点区域...');
@@ -921,6 +1310,495 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
     generateRecommendations,
     generateAnalysisSummary
   ]);
+
+  // ========================== 3.5 地图相关函数 ==========================
+  /**
+   * 添加标记到地图（学校位置）
+   */
+  const addMarkersToMap = useCallback((map: any) => {
+    if (!analysisResult?.schools) return;
+
+    try {
+      // 不清除地图，保留基础地图元素
+
+      analysisResult.schools.forEach((school, index) => {
+        if (!school.longitude || !school.latitude) return;
+
+        const getBusinessColor = (level?: string) => {
+          if (level === 'high') return '#52c41a';
+          if (level === 'medium') return '#faad14';
+          return '#ff4d4f';
+        };
+
+        const marker = new window.AMap.Marker({
+          position: [school.longitude, school.latitude],
+          title: school.name,
+          content: `
+            <div style="
+              width: 24px; 
+              height: 24px; 
+              border-radius: 50%; 
+              background-color: ${getBusinessColor(school.businessValue?.level)}; 
+              border: 2px solid white; 
+              box-shadow: 0 2px 4px rgba(0,0,0,0.3); 
+              cursor: pointer; 
+              display: flex; 
+              align-items: center; 
+              justify-content: center; 
+              font-size: 10px; 
+              color: white; 
+              font-weight: bold;
+            ">
+              ${school.businessValue?.score || school.rating || '?'}
+            </div>
+          `
+        });
+
+        marker.on('click', () => {
+          handleViewSchoolDetail(school);
+        });
+
+        map.add(marker);
+      });
+
+      console.log(`✅ 已添加 ${analysisResult.schools.length} 个学校标记`);
+    } catch (error) {
+      console.error('添加标记到地图失败:', error);
+    }
+  }, [analysisResult]);
+
+  /**
+   * 添加用户选中的铺位标记到地图
+   */
+  const addSelectedShopMarkers = useCallback((map: any) => {
+    if (!selectedShops || selectedShops.length === 0) return;
+
+    try {
+      selectedShops.forEach((shop) => {
+        if (!shop.longitude || !shop.latitude) return;
+
+        const marker = new window.AMap.Marker({
+          position: [shop.longitude, shop.latitude],
+          title: shop.name,
+          content: `
+            <div style="
+              width: 36px; 
+              height: 36px; 
+              border-radius: 50%; 
+              background-color: #ff4d4f; 
+              border: 4px solid white; 
+              box-shadow: 0 2px 8px rgba(0,0,0,0.5); 
+              cursor: pointer; 
+              display: flex; 
+              align-items: center; 
+              justify-content: center; 
+              font-size: 20px;
+              color: white;
+            ">
+              ✓
+            </div>
+          `,
+          zIndex: 1500 // 确保选中的铺位标记在学校标记之上
+        });
+
+        marker.on('click', () => {
+          handleViewSchoolDetail(shop);
+        });
+
+        map.add(marker);
+      });
+
+      console.log(`✅ 已添加 ${selectedShops.length} 个选中铺位标记`);
+    } catch (error) {
+      console.error('添加选中铺位标记失败:', error);
+    }
+  }, [selectedShops]);
+
+  /**
+   * 添加推荐位置标注到地图（智能分析建议的店铺位置）
+   */
+  const addRecommendationsToMap = useCallback((map: any) => {
+    if (!analysisResult?.recommendations || !map) return;
+
+    try {
+      // 添加推荐位置标注（使用不同的图标样式）
+      analysisResult.recommendations.forEach((rec: any, index: number) => {
+        // recommendations可能是字符串数组，需要检查格式
+        if (typeof rec === 'string') return; // 跳过字符串类型的推荐
+        
+        if (!rec.location || !Array.isArray(rec.location) || rec.location.length !== 2) {
+          // 尝试从hotspots获取推荐位置
+          const hotspot = analysisResult.hotspots?.[index];
+          if (hotspot && hotspot.center && hotspot.center.length === 2) {
+            const [lng, lat] = hotspot.center;
+            addRecommendationMarker(map, lng, lat, `推荐位置 ${index + 1}`, rec || hotspot.reason || 'AI智能推荐', index);
+          }
+          return;
+        }
+
+        const [lng, lat] = rec.location;
+        if (!lng || !lat) return;
+
+        addRecommendationMarker(map, lng, lat, `推荐位置 ${index + 1}`, rec.reason || 'AI智能推荐', index);
+      });
+
+      console.log(`✅ 已添加推荐位置标注`);
+    } catch (error) {
+      console.error('添加推荐位置标注失败:', error);
+    }
+  }, [analysisResult]);
+
+  /**
+   * 添加单个推荐位置标记
+   */
+  const addRecommendationMarker = useCallback((map: any, lng: number, lat: number, title: string, reason: string, index: number) => {
+    try {
+      // 使用InfoWindow显示推荐信息
+      const infoWindow = new window.AMap.InfoWindow({
+        content: `
+          <div style="padding: 8px; min-width: 200px;">
+            <div style="font-weight: bold; color: #1890ff; margin-bottom: 4px;">
+              🎯 ${title}
+            </div>
+            <div style="font-size: 12px; color: #666; margin-bottom: 4px;">
+              ${reason}
+            </div>
+            <div style="font-size: 11px; color: #999; margin-top: 8px;">
+              <button onclick="window.confirmRecommendation(${lng}, ${lat}, '${reason.replace(/'/g, "\\'")}')" 
+                      style="background: #1890ff; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">
+                确认保存
+              </button>
+            </div>
+          </div>
+        `,
+        offset: new window.AMap.Pixel(0, -30)
+      });
+
+      // 创建推荐位置标记（使用星形图标）
+      const marker = new window.AMap.Marker({
+        position: [lng, lat],
+        title: title,
+        content: `
+          <div style="
+            width: 32px; 
+            height: 32px; 
+            background-color: #1890ff; 
+            border: 3px solid white; 
+            border-radius: 50%; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4); 
+            cursor: pointer; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-size: 16px;
+            color: white;
+          ">
+            ⭐
+          </div>
+        `,
+        zIndex: 1000 // 确保推荐标记在最上层
+      });
+
+      marker.on('click', () => {
+        infoWindow.open(map, [lng, lat]);
+      });
+
+      map.add(marker);
+    } catch (error) {
+      console.error('添加推荐标记失败:', error);
+    }
+  }, []);
+
+  /**
+   * 初始化基础地图（仅显示城市区域，不依赖分析结果）
+   */
+  const initBaseMap = useCallback(() => {
+    if (!mapRef.current || !cityName) {
+      return;
+    }
+
+    try {
+      if (typeof window === 'undefined' || !window.AMap) {
+        console.warn('高德地图API未加载');
+        return;
+      }
+
+      // 如果地图已经初始化，先销毁
+      if (amapRef.current) {
+        try {
+          amapRef.current.destroy();
+        } catch (e) {
+          console.warn('清理旧地图实例失败:', e);
+        }
+        amapRef.current = null;
+      }
+
+      const container = mapRef.current;
+      if (container.offsetWidth === 0 || container.offsetHeight === 0) {
+        setTimeout(() => initBaseMap(), 200);
+        return;
+      }
+
+      // 使用城市名称进行地理编码获取中心点
+      // 默认使用常见城市的坐标（如果地理编码失败）
+      const defaultCenters: Record<string, [number, number]> = {
+        '北京市': [116.3974, 39.9093],
+        '天津市': [117.2008, 39.0842],
+        '上海市': [121.4737, 31.2304],
+        '重庆市': [106.5516, 29.5630],
+        '沈阳市': [123.4315, 41.8057],
+        '大连市': [121.6147, 38.9140],
+        '辽阳市': [123.1724, 41.2673],
+        '滨州市': [118.0169, 37.3835],
+      };
+
+      const defaultCenter = defaultCenters[cityName] || [116.3974, 39.9093]; // 默认北京
+
+      const map = new window.AMap.Map(container, {
+        center: defaultCenter,
+        zoom: 12,
+        mapStyle: 'amap://styles/normal',
+        features: ['bg', 'road', 'building', 'point']
+      });
+
+      // 添加定位控件
+      try {
+        const geolocation = new window.AMap.Geolocation({
+          enableHighAccuracy: true,
+          timeout: 10000,
+          buttonOffset: new window.AMap.Pixel(10, 20),
+          zoomToAccuracy: true,
+          buttonPosition: 'RB' // 右下角
+        });
+        map.addControl(geolocation);
+        geolocation.getCurrentPosition((status: string, result: any) => {
+          if (status === 'complete') {
+            console.log('✅ 定位成功:', result.formattedAddress);
+          } else {
+            console.warn('定位失败:', result.message);
+          }
+        });
+      } catch (e) {
+        console.warn('添加定位控件失败:', e);
+      }
+
+      // 添加图层切换控件（卫星图、路网图等）
+      try {
+        const mapType = new window.AMap.MapType({
+          defaultType: 0, // 0-标准 1-卫星 2-路网
+          showRoad: true, // 显示路网图层
+          showTraffic: false // 不显示实时路况
+        });
+        map.addControl(mapType);
+      } catch (e) {
+        console.warn('添加图层切换控件失败:', e);
+      }
+
+      // 添加比例尺控件
+      try {
+        map.addControl(new window.AMap.Scale({
+          position: 'LB' // 左下角
+        }));
+      } catch (e) {
+        console.warn('添加比例尺控件失败:', e);
+      }
+
+      // 添加工具栏控件
+      try {
+        map.addControl(new window.AMap.ToolBar({
+          position: 'RT' // 右上角
+        }));
+      } catch (e) {
+        console.warn('添加工具栏控件失败:', e);
+      }
+
+      amapRef.current = map;
+
+      map.on('complete', () => {
+        setMapLoaded(true);
+        setMapError('');
+        console.log('✅ 基础地图初始化完成，中心点:', defaultCenter, '城市:', cityName);
+        
+        // 如果有学校数据，延迟添加标记（确保地图完全加载）
+        if (shops.length > 0) {
+          setTimeout(() => {
+            addShopMarkersToMap(map, shops);
+          }, 500);
+        }
+      });
+
+      map.on('error', (e: any) => {
+        console.error('地图加载错误:', e);
+        setMapError('地图加载错误: ' + (e.message || '未知错误'));
+      });
+
+    } catch (error) {
+      console.error('基础地图初始化失败:', error);
+      setMapError('地图初始化失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  }, [cityName]);
+
+  /**
+   * 初始化高德地图（带分析结果）
+   */
+  const initMap = useCallback(() => {
+    if (!mapRef.current || !analysisResult?.schools || analysisResult.schools.length === 0) {
+      return;
+    }
+
+    try {
+      if (typeof window === 'undefined' || !window.AMap) {
+        console.warn('高德地图API未加载');
+        return;
+      }
+
+      // 如果地图已经初始化，先销毁
+      if (amapRef.current) {
+        try {
+          amapRef.current.destroy();
+        } catch (e) {
+          console.warn('清理旧地图实例失败:', e);
+        }
+        amapRef.current = null;
+      }
+
+      const container = mapRef.current;
+      if (container.offsetWidth === 0 || container.offsetHeight === 0) {
+        setTimeout(() => initMap(), 200);
+        return;
+      }
+
+      // 计算地图中心点（基于学校坐标）
+      const schoolsWithCoords = analysisResult.schools.filter(s => s.longitude && s.latitude);
+      if (schoolsWithCoords.length === 0) {
+        setMapError('没有有效的学校坐标数据');
+        return;
+      }
+
+      const lngs = schoolsWithCoords.map(s => s.longitude);
+      const lats = schoolsWithCoords.map(s => s.latitude);
+      const centerLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
+      const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+
+      const map = new window.AMap.Map(container, {
+        center: [centerLng, centerLat],
+        zoom: 13,
+        mapStyle: 'amap://styles/normal',
+        features: ['bg', 'road', 'building', 'point']
+      });
+
+      amapRef.current = map;
+
+      map.on('complete', () => {
+        setMapLoaded(true);
+        setMapError('');
+        addMarkersToMap(map);
+        // 延迟添加推荐位置，确保学校标记先显示
+        setTimeout(() => {
+          addRecommendationsToMap(map);
+        }, 500);
+      });
+
+      map.on('error', (e: any) => {
+        console.error('地图加载错误:', e);
+        setMapError('地图加载错误: ' + (e.message || '未知错误'));
+      });
+
+    } catch (error) {
+      console.error('高德地图初始化失败:', error);
+      setMapError('地图初始化失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    }
+  }, [analysisResult, addMarkersToMap, addRecommendationsToMap, addSelectedShopMarkers]);
+
+  /**
+   * 加载高德地图脚本
+   */
+  const loadAmapScript = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    if (window.AMap) {
+      // 如果有分析结果，初始化完整地图；否则初始化基础地图
+      if (analysisResult?.schools && analysisResult.schools.length > 0) {
+        initMap();
+      } else if (cityName) {
+        initBaseMap();
+      }
+      return;
+    }
+
+    if (document.querySelector('script[src*="webapi.amap.com"]')) {
+      const checkInterval = setInterval(() => {
+        if (window.AMap) {
+          clearInterval(checkInterval);
+          // 如果有分析结果，初始化完整地图；否则初始化基础地图
+          if (analysisResult?.schools && analysisResult.schools.length > 0) {
+            initMap();
+          } else if (cityName) {
+            initBaseMap();
+          }
+        }
+      }, 100);
+      return;
+    }
+
+    const script = document.createElement('script');
+    const plugins = AMAP_CONFIG.plugins.join(',');
+    script.src = `https://webapi.amap.com/maps?v=${AMAP_CONFIG.version}&key=${AMAP_CONFIG.key}&plugin=${plugins}`;
+    script.async = true;
+    script.defer = true;
+    
+    script.onload = () => {
+      setTimeout(() => {
+        if (window.AMap) {
+          // 如果有分析结果，初始化完整地图；否则初始化基础地图
+          if (analysisResult?.schools && analysisResult.schools.length > 0) {
+            initMap();
+          } else if (cityName) {
+            initBaseMap();
+          }
+        }
+      }, 100);
+    };
+    
+    script.onerror = () => {
+      setMapError('高德地图脚本加载失败');
+    };
+    
+    document.head.appendChild(script);
+  }, [initMap, initBaseMap, analysisResult, cityName]);
+
+  // 监听分析结果变化，初始化地图并添加标注
+  useEffect(() => {
+    if (analysisResult?.schools && analysisResult.schools.length > 0 && mapRef.current) {
+      const timer = setTimeout(() => {
+        if (typeof window !== 'undefined' && window.AMap) {
+          initMap();
+        } else {
+          loadAmapScript();
+        }
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisResult?.schools?.length]); // 只依赖学校数量，避免无限循环
+
+  // 监听城市变化，优先显示GIS地图（即使没有分析结果）
+  useEffect(() => {
+    if (cityName && cityName !== '未知城市' && mapRef.current && !analysisResult) {
+      // 先初始化一个基础地图，显示城市区域
+      const timer = setTimeout(() => {
+        if (typeof window !== 'undefined' && window.AMap) {
+          initBaseMap();
+        } else {
+          loadAmapScript();
+        }
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cityName]); // 只依赖城市名称
 
   // ========================== 3.6 UI渲染函数（拆分渲染逻辑） ==========================
   /**
@@ -1177,6 +2055,23 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
     // 表格列定义 - 合并学校列表和详情的完整布局
     const columns = [
       {
+        title: (
+          <Checkbox
+            checked={selectedSchoolIds.size > 0 && selectedSchoolIds.size === schools.length}
+            indeterminate={selectedSchoolIds.size > 0 && selectedSchoolIds.size < schools.length}
+            onChange={(e) => handleSelectAll(e.target.checked)}
+          />
+        ),
+        key: 'selection',
+        width: 50,
+        render: (_: any, record: any) => (
+          <Checkbox
+            checked={selectedSchoolIds.has(record.id?.toString() || '')}
+            onChange={(e) => handleSchoolSelectionChange(record.id?.toString() || '', e.target.checked)}
+          />
+        ),
+      },
+      {
         title: '序号',
         dataIndex: 'index',
         key: 'index',
@@ -1189,10 +2084,14 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
         key: 'name',
         width: 200,
         ellipsis: true,
-        render: (text: string) => (
-          <div style={{ fontWeight: 'bold', color: '#1890ff', fontSize: '14px' }}>
+        render: (text: string, record: any) => (
+          <Button
+            type="link"
+            onClick={() => handleViewSchoolDetail(record)}
+            style={{ padding: 0, fontWeight: 'bold', color: '#1890ff', fontSize: '14px' }}
+          >
             {text}
-          </div>
+          </Button>
         ),
       },
       {
@@ -1298,6 +2197,54 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
         }}>
           📊 学校数据详情 ({total} 所学校)
             </div>
+            <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Space>
+                <Button
+                  icon={<SaveOutlined />}
+                  onClick={handleOpenSaveModal}
+                  disabled={selectedSchoolIds.size === 0}
+                >
+                  保存选中 ({selectedSchoolIds.size})
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  onClick={saveAllToDB}
+                  loading={savingSchools}
+                >
+                  保存全部
+                </Button>
+                {analysisResult.recommendations && analysisResult.recommendations.length > 0 && (
+                  <Button
+                    icon={<UnorderedListOutlined />}
+                    onClick={handleViewRecommendations}
+                  >
+                    推荐位置列表 ({analysisResult.recommendations.length})
+                  </Button>
+                )}
+                <Button
+                  icon={<SyncOutlined />}
+                  onClick={handleRefreshSchoolDetails}
+                  loading={refreshingSchools}
+                  title="使用AI重新获取学校的学生人数、教师人数等详细信息"
+                >
+                  刷新学校数据
+                </Button>
+                <Button
+                  icon={<CheckCircleOutlined />}
+                  onClick={() => {
+                    const selected = (analysisResult?.schools || []).filter(s => 
+                      selectedSchoolIds.has(s.id?.toString() || '')
+                    );
+                    setSelectedShops(selected);
+                    message.success(`已选中 ${selected.length} 个铺位，可在城市地图Tab查看`);
+                  }}
+                  disabled={selectedSchoolIds.size === 0}
+                >
+                  标记为选中铺位 ({selectedSchoolIds.size})
+                </Button>
+              </Space>
+            </div>
 
         <Table
           columns={columns}
@@ -1319,7 +2266,359 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
   };
 
 
+  // 铺位数据状态
+  const [shops, setShops] = useState<any[]>([]);
+  const [shopsLoading, setShopsLoading] = useState(false);
+
+  /**
+   * 加载该区域的学校数据（已保存到数据库的）
+   */
+  const loadShopsForCity = useCallback(async () => {
+    if (!cityName || cityName === '未知城市') return;
+    
+    setShopsLoading(true);
+    try {
+      // 获取该城市的学校数据（从school_basic_info表）
+      const district = selectedRegionNames.length >= 3 ? selectedRegionNames[2] : '';
+      const url = buildRegionUrl(cityName, district);
+      
+      const res = await fetch(`${url}?saveToDB=false&limit=500`);
+      const data = await res.json();
+      
+      if (data.success && data.data) {
+        // 转换学校数据格式为shops格式
+        const schools = Array.isArray(data.data) ? data.data : [];
+        const formattedShops = schools.map((school: any) => ({
+          shop_name: school.name || school.school_name || '学校',
+          shop_address: school.address || '',
+          latitude: school.latitude,
+          longitude: school.longitude,
+          student_count: school.student_count || school.studentCount || 0,
+          teacher_count: school.teacher_count || 0,
+          school_type: school.type || school.school_type || '未知',
+          id: school.id,
+          type: 'school' // 标识为学校数据
+        }));
+        
+        setShops(formattedShops);
+        console.log(`✅ 加载${formattedShops.length}所学校数据`);
+      } else {
+        console.warn('加载学校数据失败:', data.message);
+        setShops([]);
+      }
+    } catch (error) {
+      console.error('加载学校数据失败:', error);
+      setShops([]);
+    } finally {
+      setShopsLoading(false);
+    }
+  }, [cityName, selectedRegionNames, buildRegionUrl]);
+
+  /**
+   * 在地图上添加学校标记
+   */
+  const addShopMarkersToMap = useCallback((map: any, shops: any[]) => {
+    if (!map || !shops || shops.length === 0) return;
+
+    let addedCount = 0;
+    shops.forEach((shop: any) => {
+      // 支持两种数据格式：
+      // 1. 学校格式：latitude, longitude
+      // 2. 铺位格式：location字符串（"lng,lat"）
+      let lng: number | null = null;
+      let lat: number | null = null;
+
+      if (shop.longitude && shop.latitude) {
+        // 学校数据格式
+        lng = parseFloat(shop.longitude);
+        lat = parseFloat(shop.latitude);
+      } else if (shop.location) {
+        // 铺位数据格式（location字符串）
+        const locationStr = shop.location.toString();
+        const coordMatch = locationStr.match(/(\d+\.?\d*)[,，]\s*(\d+\.?\d*)/);
+        if (coordMatch) {
+          lng = parseFloat(coordMatch[1]);
+          lat = parseFloat(coordMatch[2]);
+        }
+      }
+
+      // 如果没有有效坐标，跳过
+      if (!lng || !lat || isNaN(lng) || isNaN(lat)) {
+        console.warn(`跳过无效坐标的数据:`, shop.shop_name || shop.name);
+        return;
+      }
+
+      try {
+        // 根据数据类型选择不同的标记样式
+        const isSchool = shop.type === 'school' || shop.school_type || shop.student_count !== undefined;
+        const markerColor = isSchool ? '#1890ff' : '#52c41a'; // 蓝色表示学校，绿色表示铺位
+        const icon = isSchool ? '🏫' : '🏪';
+
+        const marker = new window.AMap.Marker({
+          position: [lng, lat],
+          title: shop.shop_name || shop.name || '位置',
+          content: `
+            <div style="
+              width: 28px; 
+              height: 28px; 
+              background-color: ${markerColor}; 
+              border: 2px solid white; 
+              border-radius: 50%; 
+              box-shadow: 0 2px 6px rgba(0,0,0,0.3); 
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 14px;
+            ">
+              ${icon}
+            </div>
+          `,
+          zIndex: 500,
+          extData: 'shop' // 标记为铺位/学校数据
+        });
+
+        // 构建信息窗口内容
+        let infoContent = `
+          <div style="padding: 12px; min-width: 280px; max-width: 350px;">
+            <div style="font-weight: bold; color: ${markerColor}; margin-bottom: 8px; font-size: 16px;">
+              ${icon} ${shop.shop_name || shop.name || '位置'}
+            </div>
+            <div style="font-size: 13px; color: #666; margin-bottom: 4px;">
+              <strong>地址：</strong>${shop.shop_address || shop.address || '未知'}
+            </div>
+        `;
+
+        // 如果是学校，显示学校相关信息
+        if (isSchool) {
+          if (shop.school_type || shop.type) {
+            infoContent += `<div style="font-size: 13px; color: #666; margin-bottom: 4px;"><strong>类型：</strong>${shop.school_type || shop.type}</div>`;
+          }
+          if (shop.student_count || shop.studentCount) {
+            infoContent += `<div style="font-size: 13px; color: #666; margin-bottom: 4px;"><strong>学生人数：</strong>${(shop.student_count || shop.studentCount).toLocaleString()}人</div>`;
+          }
+          if (shop.teacher_count) {
+            infoContent += `<div style="font-size: 13px; color: #666; margin-bottom: 4px;"><strong>教师人数：</strong>${shop.teacher_count}人</div>`;
+          }
+        }
+
+        // 如果是铺位，显示铺位相关信息
+        if (!isSchool) {
+          if (shop.rent_amount) {
+            infoContent += `<div style="font-size: 13px; color: #666; margin-bottom: 4px;"><strong>租金：</strong>¥${shop.rent_amount.toLocaleString()}/月</div>`;
+          }
+          if (shop.area_size) {
+            infoContent += `<div style="font-size: 13px; color: #666; margin-bottom: 4px;"><strong>面积：</strong>${shop.area_size}㎡</div>`;
+          }
+          if (shop.status) {
+            infoContent += `<div style="font-size: 13px; color: #666;"><strong>状态：</strong>${shop.status}</div>`;
+          }
+        }
+
+        infoContent += `</div>`;
+
+        const infoWindow = new window.AMap.InfoWindow({
+          content: infoContent,
+          offset: new window.AMap.Pixel(0, -30)
+        });
+
+        marker.on('click', () => {
+          infoWindow.open(map, [lng, lat]);
+        });
+
+        map.add(marker);
+        addedCount++;
+      } catch (error) {
+        console.error('添加标记失败:', error, shop);
+      }
+    });
+
+    console.log(`✅ 已添加 ${addedCount}/${shops.length} 个标记到地图`);
+    
+    // 如果有标记，调整地图视野以显示所有标记
+    if (addedCount > 0 && map && map.setFitView) {
+      setTimeout(() => {
+        try {
+          const markers = map.getAllOverlays('marker') || [];
+          if (markers.length > 0) {
+            map.setFitView(markers, false, [50, 50, 50, 50]); // 边距
+          }
+        } catch (e) {
+          console.warn('调整地图视野失败:', e);
+        }
+      }, 500);
+    }
+  }, []);
+
+  // 城市地图模式：当城市名称变化时，加载铺位数据
+  useEffect(() => {
+    if (showCityMapOnly && cityName && cityName !== '未知城市') {
+      loadShopsForCity();
+    }
+  }, [showCityMapOnly, cityName, loadShopsForCity]);
+
+  // 城市地图模式：初始化地图并添加铺位标记
+  useEffect(() => {
+    if (!showCityMapOnly || !cityName || cityName === '未知城市') return;
+    
+    // 延迟初始化地图，确保DOM已渲染
+    const timer = setTimeout(() => {
+      if (!amapRef.current && mapRef.current) {
+        // 如果地图API已加载，直接初始化；否则加载脚本
+        if (typeof window !== 'undefined' && window.AMap) {
+          initBaseMap();
+        } else {
+          loadAmapScript();
+        }
+      } else if (amapRef.current && mapLoaded && shops.length > 0) {
+        // 如果地图已加载，直接添加标记
+        addShopMarkersToMap(amapRef.current, shops);
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [showCityMapOnly, cityName, initBaseMap, mapLoaded, shops, addShopMarkersToMap, loadAmapScript]);
+
+  // 地图加载完成后添加铺位标记
+  useEffect(() => {
+    if (showCityMapOnly && mapLoaded && amapRef.current && shops.length > 0) {
+      // 清除之前的标记（避免重复）
+      if (amapRef.current.getAllOverlays) {
+        const markers = amapRef.current.getAllOverlays('marker') || [];
+        markers.forEach((marker: any) => {
+          if (marker.getExtData && marker.getExtData() === 'shop') {
+            amapRef.current.remove(marker);
+          }
+        });
+      }
+      addShopMarkersToMap(amapRef.current, shops);
+    }
+  }, [showCityMapOnly, mapLoaded, shops, addShopMarkersToMap]);
+
+  /**
+   * 渲染城市地图（仅地图模式）
+   */
+  const renderCityMapOnly = () => {
+    if (!cityName || cityName === '未知城市') {
+      return (
+        <div style={{ padding: '40px', textAlign: 'center' }}>
+          <Empty description="请先选择城市" />
+        </div>
+      );
+    }
+
+    return (
+      <div style={STYLE.card}>
+        <div style={{ 
+          fontSize: '18px', 
+          fontWeight: 'bold', 
+          color: '#1890ff',
+          marginBottom: '16px',
+          padding: '12px 16px',
+          background: 'linear-gradient(135deg, #e6f7ff 0%, #f0f9ff 100%)',
+          border: '1px solid #91d5ff',
+          borderRadius: '6px',
+          textAlign: 'center'
+        }}>
+          🗺️ 城市地图 - {cityName}
+          {shops.length > 0 && ` (${shops.length} 个${shops[0]?.type === 'school' ? '学校' : '位置'})`}
+        </div>
+
+        {shopsLoading && (
+          <div style={{ textAlign: 'center', padding: '20px' }}>
+            <Spin size="large" tip="正在加载铺位数据..." />
+          </div>
+        )}
+
+        <div style={{ 
+          height: '600px', 
+          backgroundColor: '#f8f9fa',
+          border: '1px solid #e9ecef',
+          borderRadius: '6px',
+          position: 'relative'
+        }}>
+          {mapError ? (
+            <div style={{
+              height: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#ff4d4f',
+              flexDirection: 'column',
+              gap: '16px'
+            }}>
+              <div>⚠️ {mapError}</div>
+              <Button onClick={() => {
+                if (analysisResult?.schools && analysisResult.schools.length > 0) {
+                  loadAmapScript();
+                } else {
+                  initBaseMap();
+                }
+              }}>重试加载地图</Button>
+            </div>
+          ) : (
+            <>
+              <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+              {/* 显示用户选中的铺位 */}
+              {selectedShops.length > 0 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '16px',
+                  right: '16px',
+                  background: 'rgba(255, 255, 255, 0.95)',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                  zIndex: 1000,
+                  maxWidth: '300px',
+                  maxHeight: '400px',
+                  overflowY: 'auto'
+                }}>
+                  <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '14px' }}>
+                    已选中的铺位 ({selectedShops.length})
+                  </div>
+                  <List
+                    size="small"
+                    dataSource={selectedShops}
+                    renderItem={(shop, index) => (
+                      <List.Item style={{ padding: '4px 0' }}>
+                        <div style={{ fontSize: '12px', width: '100%' }}>
+                          <div style={{ fontWeight: 'bold', color: '#1890ff' }}>{shop.name}</div>
+                          <div style={{ color: '#666', fontSize: '11px' }}>{shop.address}</div>
+                          <Button
+                            type="link"
+                            size="small"
+                            icon={<EnvironmentOutlined />}
+                            onClick={() => {
+                              if (shop.longitude && shop.latitude && amapRef.current) {
+                                amapRef.current.setCenter([shop.longitude, shop.latitude]);
+                                amapRef.current.setZoom(16);
+                                message.success(`已定位到 ${shop.name}`);
+                              }
+                            }}
+                            style={{ padding: 0, fontSize: '11px', height: 'auto' }}
+                          >
+                            定位
+                          </Button>
+                        </div>
+                      </List.Item>
+                    )}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   // ========================== 3.7 主渲染函数 ==========================
+  // 如果只显示城市地图，直接返回地图组件
+  if (showCityMapOnly) {
+    return renderCityMapOnly();
+  }
+
   return (
     <div style={STYLE.container}>
       {/* 地区选择和分析控制区 */}
@@ -1357,19 +2656,24 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
             position: 'relative'
           }}>
             {analysisResult && analysisResult.schools && analysisResult.schools.length > 0 ? (
-              <div style={{
-                height: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#666',
-                flexDirection: 'column',
-                gap: '16px'
-              }}>
-                <div>地图功能暂未实现</div>
-                <div>找到 {analysisResult.schools.length} 所学校</div>
-                <div>城市: {cityName}</div>
-              </div>
+              <>
+                {mapError ? (
+                  <div style={{
+                    height: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#ff4d4f',
+                    flexDirection: 'column',
+                    gap: '16px'
+                  }}>
+                    <div>⚠️ {mapError}</div>
+                    <Button onClick={() => loadAmapScript()}>重试加载地图</Button>
+                  </div>
+                ) : (
+                  <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+                )}
+              </>
             ) : analysisResult && analysisResult.schools && analysisResult.schools.length === 0 ? (
               <div style={{
                 width: '100%',
@@ -1437,6 +2741,338 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
           </div>
         </div>
       )}
+
+      {/* 保存学校Modal */}
+      <Modal
+        title="保存学校数据"
+        open={saveModalVisible}
+        onOk={() => {
+          if (selectedSchoolIds.size === 0) {
+            message.warning('请至少选择一所学校');
+            return;
+          }
+          saveSelectedSchoolsToDB(Array.from(selectedSchoolIds));
+        }}
+        onCancel={() => {
+          setSaveModalVisible(false);
+          setSelectedSchoolIds(new Set());
+        }}
+        width={800}
+        okText="保存选中"
+        cancelText="取消"
+        confirmLoading={savingSchools}
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Space>
+            <Button size="small" onClick={() => handleSelectAll(true)}>全选</Button>
+            <Button size="small" onClick={() => handleSelectAll(false)}>取消全选</Button>
+            <span>已选择 {selectedSchoolIds.size} / {analysisResult?.schools?.length || 0} 所学校</span>
+          </Space>
+        </div>
+        <List
+          dataSource={analysisResult?.schools || []}
+          pagination={{ pageSize: 10 }}
+          renderItem={(school) => (
+            <List.Item>
+              <Checkbox
+                checked={selectedSchoolIds.has(school.id?.toString() || '')}
+                onChange={(e) => handleSchoolSelectionChange(school.id?.toString() || '', e.target.checked)}
+              >
+                <div style={{ marginLeft: 8, flex: 1 }}>
+                  <div style={{ fontWeight: 'bold', color: '#1890ff' }}>{school.name}</div>
+                  <div style={{ fontSize: '12px', color: '#666' }}>
+                    {school.type} | {school.student_count?.toLocaleString() || 0}人 | 
+                    商业价值: {school.businessValue?.level === 'high' ? '高' : school.businessValue?.level === 'medium' ? '中' : '低'}
+                  </div>
+                </div>
+              </Checkbox>
+            </List.Item>
+          )}
+        />
+      </Modal>
+
+      {/* 学校详情Modal */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <InfoCircleOutlined style={{ color: '#1890ff' }} />
+            <span>学校详细信息</span>
+            {selectedSchoolDetail && (
+              <Button
+                type="link"
+                icon={<EnvironmentOutlined />}
+                onClick={() => {
+                  if (selectedSchoolDetail.longitude && selectedSchoolDetail.latitude && amapRef.current) {
+                    amapRef.current.setCenter([selectedSchoolDetail.longitude, selectedSchoolDetail.latitude]);
+                    amapRef.current.setZoom(16);
+                    message.success('已定位到地图');
+                  }
+                }}
+              >
+                地图定位
+              </Button>
+            )}
+          </div>
+        }
+        open={schoolDetailModalVisible}
+        onCancel={() => {
+          setSchoolDetailModalVisible(false);
+          setSelectedSchoolDetail(null);
+        }}
+        width={800}
+        footer={[
+          <Button key="close" onClick={() => {
+            setSchoolDetailModalVisible(false);
+            setSelectedSchoolDetail(null);
+          }}>
+            关闭
+          </Button>,
+          <Button
+            key="save"
+            type="primary"
+            icon={<SaveOutlined />}
+            onClick={() => {
+              if (selectedSchoolDetail) {
+                saveSelectedSchoolsToDB([selectedSchoolDetail.id?.toString() || '']);
+              }
+            }}
+            loading={savingSchools}
+          >
+            保存到数据库
+          </Button>
+        ]}
+      >
+        {selectedSchoolDetail && (
+          <Descriptions bordered column={2}>
+            <Descriptions.Item label="学校名称" span={2}>
+              <strong style={{ fontSize: '16px', color: '#1890ff' }}>{selectedSchoolDetail.name}</strong>
+            </Descriptions.Item>
+            <Descriptions.Item label="学校类型">
+              <Tag color="blue">{selectedSchoolDetail.type}</Tag>
+            </Descriptions.Item>
+            <Descriptions.Item label="学生数量">
+              <strong style={{ color: '#faad14' }}>{selectedSchoolDetail.student_count?.toLocaleString() || 0} 人</strong>
+            </Descriptions.Item>
+            <Descriptions.Item label="教师数量">
+              {selectedSchoolDetail.teacher_count || 0} 人
+            </Descriptions.Item>
+            <Descriptions.Item label="商业价值">
+              <Tag color={
+                selectedSchoolDetail.businessValue?.level === 'high' ? 'green' :
+                selectedSchoolDetail.businessValue?.level === 'medium' ? 'orange' : 'red'
+              }>
+                {selectedSchoolDetail.businessValue?.level === 'high' ? '高价值' :
+                 selectedSchoolDetail.businessValue?.level === 'medium' ? '中价值' : '低价值'}
+              </Tag>
+              <span style={{ marginLeft: 8 }}>
+                评分: {selectedSchoolDetail.businessValue?.score || 0}/100
+              </span>
+            </Descriptions.Item>
+            <Descriptions.Item label="地址" span={2}>
+              {selectedSchoolDetail.address || '未知'}
+            </Descriptions.Item>
+            <Descriptions.Item label="坐标">
+              {selectedSchoolDetail.longitude && selectedSchoolDetail.latitude
+                ? `${selectedSchoolDetail.latitude.toFixed(6)}, ${selectedSchoolDetail.longitude.toFixed(6)}`
+                : '未知'}
+            </Descriptions.Item>
+            <Descriptions.Item label="AI分析" span={2}>
+              <div style={{ 
+                maxHeight: '200px', 
+                overflowY: 'auto', 
+                padding: '8px',
+                background: '#f5f5f5',
+                borderRadius: '4px',
+                fontSize: '12px',
+                lineHeight: '1.6',
+                whiteSpace: 'pre-wrap'
+              }}>
+                {selectedSchoolDetail.aiAnalysis || '暂无AI分析数据'}
+              </div>
+            </Descriptions.Item>
+            {selectedSchoolDetail.businessValue?.reasons && selectedSchoolDetail.businessValue.reasons.length > 0 && (
+              <Descriptions.Item label="评估理由" span={2}>
+                <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                  {selectedSchoolDetail.businessValue.reasons.map((reason: string, index: number) => (
+                    <li key={index} style={{ marginBottom: '4px' }}>{reason}</li>
+                  ))}
+                </ul>
+              </Descriptions.Item>
+            )}
+          </Descriptions>
+        )}
+      </Modal>
+
+      {/* 推荐位置列表Modal */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <StarOutlined style={{ color: '#1890ff' }} />
+            <span>AI推荐位置列表</span>
+          </div>
+        }
+        open={recommendationListVisible}
+        onCancel={() => {
+          setRecommendationListVisible(false);
+          setSelectedRecommendation(null);
+        }}
+        width={900}
+        footer={null}
+      >
+        {analysisResult?.recommendations && analysisResult.recommendations.length > 0 ? (
+          <List
+            dataSource={analysisResult.recommendations.map((rec: any, index: number) => ({
+              ...rec,
+              index: index + 1
+            }))}
+            renderItem={(item: any) => (
+              <List.Item
+                actions={[
+                  <Button
+                    key="detail"
+                    type="link"
+                    onClick={() => handleViewRecommendationDetail(item, item.index)}
+                  >
+                    查看详情
+                  </Button>
+                ]}
+              >
+                <List.Item.Meta
+                  avatar={<div style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '50%',
+                    background: '#1890ff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    fontSize: '20px'
+                  }}>⭐</div>}
+                  title={
+                    <div>
+                      <strong style={{ fontSize: '16px', color: '#1890ff' }}>
+                        推荐位置 {item.index}
+                      </strong>
+                      {item.location && (
+                        <Tag color="blue" style={{ marginLeft: 8 }}>
+                          {item.location[1]?.toFixed(4)}, {item.location[0]?.toFixed(4)}
+                        </Tag>
+                      )}
+                    </div>
+                  }
+                  description={
+                    <div>
+                      {typeof item === 'string' ? (
+                        <div style={{ fontSize: '14px', lineHeight: '1.6' }}>{item}</div>
+                      ) : (
+                        <div>
+                          <div style={{ fontSize: '14px', lineHeight: '1.6', marginBottom: 8 }}>
+                            {item.reason || item.description || 'AI智能推荐'}
+                          </div>
+                          {item.score && (
+                            <Tag color="green">评分: {item.score}/100</Tag>
+                          )}
+                          {item.advantages && item.advantages.length > 0 && (
+                            <div style={{ marginTop: 8 }}>
+                              <strong>优势：</strong>
+                              {item.advantages.map((adv: string, idx: number) => (
+                                <Tag key={idx} color="green" style={{ marginTop: 4 }}>{adv}</Tag>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        ) : (
+          <Empty description="暂无推荐位置数据" />
+        )}
+      </Modal>
+
+      {/* 推荐位置详情Modal（下钻） */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <StarOutlined style={{ color: '#1890ff' }} />
+            <span>推荐位置详情 - 位置 {selectedRecommendation?.index}</span>
+          </div>
+        }
+        open={!!selectedRecommendation}
+        onCancel={() => setSelectedRecommendation(null)}
+        width={700}
+        footer={[
+          <Button key="close" onClick={() => setSelectedRecommendation(null)}>
+            关闭
+          </Button>,
+          selectedRecommendation?.location && (
+            <Button
+              key="locate"
+              type="primary"
+              icon={<EnvironmentOutlined />}
+              onClick={() => {
+                if (amapRef.current && selectedRecommendation.location) {
+                  const [lng, lat] = selectedRecommendation.location;
+                  amapRef.current.setCenter([lng, lat]);
+                  amapRef.current.setZoom(15);
+                  message.success('已定位到地图');
+                }
+              }}
+            >
+              地图定位
+            </Button>
+          )
+        ]}
+      >
+        {selectedRecommendation && (
+          <Descriptions bordered column={1}>
+            <Descriptions.Item label="推荐理由">
+              <div style={{ fontSize: '14px', lineHeight: '1.8' }}>
+                {selectedRecommendation.reason || selectedRecommendation.description || 'AI智能推荐'}
+              </div>
+            </Descriptions.Item>
+            {selectedRecommendation.score && (
+              <Descriptions.Item label="推荐评分">
+                <Tag color="green" style={{ fontSize: '16px', padding: '4px 12px' }}>
+                  {selectedRecommendation.score} / 100
+                </Tag>
+              </Descriptions.Item>
+            )}
+            {selectedRecommendation.location && (
+              <Descriptions.Item label="位置坐标">
+                {selectedRecommendation.location[1]?.toFixed(6)}, {selectedRecommendation.location[0]?.toFixed(6)}
+              </Descriptions.Item>
+            )}
+            {selectedRecommendation.advantages && selectedRecommendation.advantages.length > 0 && (
+              <Descriptions.Item label="优势">
+                <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                  {selectedRecommendation.advantages.map((adv: string, index: number) => (
+                    <li key={index} style={{ marginBottom: '4px' }}>{adv}</li>
+                  ))}
+                </ul>
+              </Descriptions.Item>
+            )}
+            {selectedRecommendation.disadvantages && selectedRecommendation.disadvantages.length > 0 && (
+              <Descriptions.Item label="劣势">
+                <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                  {selectedRecommendation.disadvantages.map((dis: string, index: number) => (
+                    <li key={index} style={{ marginBottom: '4px', color: '#ff4d4f' }}>{dis}</li>
+                  ))}
+                </ul>
+              </Descriptions.Item>
+            )}
+            {selectedRecommendation.distance && (
+              <Descriptions.Item label="距离最近学校">
+                {selectedRecommendation.distance} 米
+              </Descriptions.Item>
+            )}
+          </Descriptions>
+        )}
+      </Modal>
     </div>
   );
 };
