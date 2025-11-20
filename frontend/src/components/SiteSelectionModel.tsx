@@ -197,6 +197,10 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
   const amapRef = useRef<any>(null);
   const [pageSize, setPageSize] = useState(20);
   
+  // 城市地图模式下的列表分页状态
+  const [cityMapTablePage, setCityMapTablePage] = useState(1);
+  const [cityMapTablePageSize, setCityMapTablePageSize] = useState(10);
+  
   // 增强AI分析相关状态
   const [enhancedAIAnalysis, setEnhancedAIAnalysis] = useState<EnhancedAIAnalysis | null>(null);
   const [enhancedAILoading, setEnhancedAILoading] = useState(false);
