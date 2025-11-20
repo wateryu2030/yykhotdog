@@ -2670,13 +2670,18 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
           </div>
         )}
 
-        <div style={{ 
-          height: '600px', 
-          backgroundColor: '#f8f9fa',
-          border: '1px solid #e9ecef',
-          borderRadius: '6px',
-          position: 'relative'
-        }}>
+        {/* 地图和列表布局 */}
+        <Row gutter={16}>
+          {/* 地图区域 */}
+          <Col span={shops.length > 0 ? 14 : 24}>
+            <div style={{ 
+              height: '600px', 
+              backgroundColor: '#f8f9fa',
+              border: '1px solid #e9ecef',
+              borderRadius: '6px',
+              position: 'relative',
+              marginBottom: '16px'
+            }}>
           {mapError ? (
             <div style={{
               height: '100%',
@@ -2771,7 +2776,170 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
               )}
             </>
           )}
-        </div>
+            </div>
+          </Col>
+          
+          {/* 学校列表区域 */}
+          {shops.length > 0 && (
+            <Col span={10}>
+              <Card 
+                title={
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span>
+                      📋 学校列表 ({shops.length} 所)
+                    </span>
+                    {selectedRegionNames.length >= 3 && (
+                      <Tag color="blue">{selectedRegionNames[2]}</Tag>
+                    )}
+                  </div>
+                }
+                style={{ height: '600px', display: 'flex', flexDirection: 'column' }}
+                bodyStyle={{ flex: 1, overflow: 'hidden', padding: '12px' }}
+              >
+                <Table
+                  dataSource={shops}
+                  rowKey={(record) => record.id || `${record.shop_name}_${record.latitude}_${record.longitude}`}
+                  pagination={{
+                    current: cityMapTablePage,
+                    pageSize: cityMapTablePageSize,
+                    showSizeChanger: true,
+                    showQuickJumper: true,
+                    showTotal: (total) => `共 ${total} 所学校`,
+                    pageSizeOptions: ['10', '20', '50', '100'],
+                    onChange: (page, size) => {
+                      setCityMapTablePage(page);
+                      setCityMapTablePageSize(size || 10);
+                    }
+                  }}
+                  scroll={{ y: 520, x: 800 }}
+                  size="small"
+                  onRow={(record) => ({
+                    onClick: () => {
+                      // 点击行时在地图上定位到该学校
+                      if (record.longitude && record.latitude && amapRef.current) {
+                        amapRef.current.setCenter([record.longitude, record.latitude]);
+                        amapRef.current.setZoom(16);
+                        // 显示信息窗口
+                        if (amapRef.current.getAllOverlays) {
+                          const markers = amapRef.current.getAllOverlays('marker') || [];
+                          const targetMarker = markers.find((m: any) => 
+                            m.getPosition && 
+                            Math.abs(m.getPosition().lng - record.longitude) < 0.0001 &&
+                            Math.abs(m.getPosition().lat - record.latitude) < 0.0001
+                          );
+                          if (targetMarker && targetMarker.getExtData && targetMarker.getExtData() === 'shop') {
+                            // 打开信息窗口
+                            if (targetMarker.infoWindow) {
+                              targetMarker.infoWindow.open(amapRef.current, targetMarker.getPosition());
+                            }
+                          }
+                        }
+                        message.success(`已定位到 ${record.shop_name}`);
+                      }
+                    },
+                    style: { cursor: 'pointer' }
+                  })}
+                  columns={[
+                    {
+                      title: '序号',
+                      key: 'index',
+                      width: 60,
+                      render: (_: any, __: any, index: number) => {
+                        const current = cityMapTablePage || 1;
+                        const size = cityMapTablePageSize || 10;
+                        return (current - 1) * size + index + 1;
+                      }
+                    },
+                    {
+                      title: '学校名称',
+                      dataIndex: 'shop_name',
+                      key: 'name',
+                      width: 180,
+                      ellipsis: true,
+                      render: (text: string, record: any) => (
+                        <div>
+                          <div style={{ fontWeight: 'bold', color: '#1890ff' }}>{text}</div>
+                          {record.school_type && (
+                            <Tag color="cyan" style={{ marginTop: '4px', fontSize: '11px' }}>
+                              {record.school_type}
+                            </Tag>
+                          )}
+                        </div>
+                      )
+                    },
+                    {
+                      title: '学生人数',
+                      dataIndex: 'student_count',
+                      key: 'student_count',
+                      width: 100,
+                      align: 'right',
+                      sorter: (a: any, b: any) => (a.student_count || 0) - (b.student_count || 0),
+                      render: (count: number) => count ? `${count.toLocaleString()} 人` : '-'
+                    },
+                    {
+                      title: '教师人数',
+                      dataIndex: 'teacher_count',
+                      key: 'teacher_count',
+                      width: 100,
+                      align: 'right',
+                      sorter: (a: any, b: any) => (a.teacher_count || 0) - (b.teacher_count || 0),
+                      render: (count: number) => count ? `${count} 人` : '-'
+                    },
+                    {
+                      title: '地址',
+                      dataIndex: 'shop_address',
+                      key: 'address',
+                      width: 200,
+                      ellipsis: true,
+                      render: (text: string) => text || '-'
+                    },
+                    {
+                      title: '坐标',
+                      key: 'coordinates',
+                      width: 140,
+                      render: (_: any, record: any) => {
+                        if (record.longitude && record.latitude) {
+                          return (
+                            <div style={{ fontSize: '11px', fontFamily: 'monospace' }}>
+                              <div>经度: {record.longitude.toFixed(6)}</div>
+                              <div>纬度: {record.latitude.toFixed(6)}</div>
+                            </div>
+                          );
+                        }
+                        return <Tag color="red">无坐标</Tag>;
+                      }
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      width: 100,
+                      fixed: 'right',
+                      render: (_: any, record: any) => (
+                        <Button
+                          type="link"
+                          size="small"
+                          icon={<EnvironmentOutlined />}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (record.longitude && record.latitude && amapRef.current) {
+                              amapRef.current.setCenter([record.longitude, record.latitude]);
+                              amapRef.current.setZoom(16);
+                              message.success(`已定位到 ${record.shop_name}`);
+                            } else {
+                              message.warning('该学校没有坐标信息');
+                            }
+                          }}
+                        >
+                          定位
+                        </Button>
+                      )
+                    }
+                  ]}
+                />
+              </Card>
+            </Col>
+          )}
+        </Row>
       </div>
     );
   };
