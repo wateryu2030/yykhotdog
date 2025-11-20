@@ -29,8 +29,15 @@ const SiteSelection: React.FC = () => {
   const fetchRegionData = async () => {
     setRegionLoading(true);
     try {
+      console.log('📥 开始获取地区级联数据...');
       const response = await api.get('/region/cascade');
-      if (response.data.success) {
+      console.log('📥 地区级联API响应:', { 
+        success: response.data?.success, 
+        dataCount: response.data?.data?.length || 0,
+        message: response.data?.message 
+      });
+      
+      if (response.data?.success) {
         // 转换数据格式为Cascader需要的格式
         const convertToCascaderFormat = (regions: any[]): any[] => {
           return regions.map(region => ({
@@ -42,11 +49,17 @@ const SiteSelection: React.FC = () => {
               : undefined
           }));
         };
-        setRegionOptions(convertToCascaderFormat(response.data.data || []));
+        const cascaderData = convertToCascaderFormat(response.data.data || []);
+        console.log(`✅ 成功转换地区数据: ${cascaderData.length}个顶级节点`);
+        setRegionOptions(cascaderData);
+      } else {
+        console.warn('⚠️ 地区级联API返回失败:', response.data);
+        message.warning('获取地区数据失败: ' + (response.data?.error || '未知错误'));
       }
-    } catch (error) {
-      console.error('获取地区数据失败:', error);
-      message.error('获取地区数据失败');
+    } catch (error: any) {
+      console.error('❌ 获取地区数据失败:', error);
+      console.error('   错误详情:', error?.message);
+      message.error('获取地区数据失败: ' + (error?.message || '未知错误'));
     } finally {
       setRegionLoading(false);
     }
