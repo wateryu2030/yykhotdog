@@ -15,10 +15,11 @@ const router = Router();
 router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: Response) => {
   try {
     const { city, district } = req.params;
-    const { saveToDB } = req.query;
+    const { saveToDB, forceRefresh } = req.query;
     const shouldSaveToDB = saveToDB === 'true';
+    const shouldForceRefresh = forceRefresh === 'true'; // 强制刷新：从高德地图重新获取数据
 
-    logger.info(`获取学校数据并AI分析: ${city}${district ? '/' + district : ''}`);
+    logger.info(`获取学校数据并AI分析: ${city}${district ? '/' + district : ''} (forceRefresh: ${shouldForceRefresh})`);
 
     // 0. 检查表是否存在，如果不存在则创建
     try {
@@ -68,7 +69,7 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
       logger.warn('创建表时出错（可能已存在）:', tableError);
     }
 
-    // 1. 从数据库获取学校数据
+    // 构建查询条件（用于数据库查询和去重）
     let whereClause = 'WHERE s.delflag = 0 AND s.city = :city';
     const params: any = { city };
 
@@ -100,19 +101,10 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
     `;
 
     let schools: any[] = [];
-    try {
-      schools = await sequelize.query(query, {
-        type: QueryTypes.SELECT,
-        replacements: params,
-      }) as any[];
-    } catch (queryError: any) {
-      logger.warn('查询学校数据失败（可能表不存在）:', queryError);
-      schools = [];
-    }
 
-    // 2. 如果数据库没有数据，尝试从高德地图获取
-    if (schools.length === 0) {
-      logger.info(`数据库中没有${city}${district ? district : ''}的学校数据，尝试从高德地图获取`);
+    // 1. 如果forceRefresh=true（用户点击AI智能分析），强制从高德地图获取最新数据
+    if (shouldForceRefresh) {
+      logger.info(`AI智能分析模式：从高德地图获取${city}${district ? district : ''}的最新学校数据`);
       
       try {
         // 获取省份信息（从城市推断）
@@ -123,10 +115,33 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
           city,
           district || ''
         );
+        
+        logger.info(`高德地图返回${amapSchools.length}所学校数据`);
 
         if (amapSchools.length > 0) {
-          // 保存到数据库
+          // 先查询数据库中已有的学校（用于去重）
+          const existingSchools = await sequelize.query(`
+            SELECT s.school_name, s.address
+            FROM school_basic_info s
+            ${whereClause}
+          `, {
+            type: QueryTypes.SELECT,
+            replacements: params,
+          }) as any[];
+          
+          const existingSchoolKeys = new Set(
+            existingSchools.map(s => `${s.school_name}_${s.address || ''}`.trim().toLowerCase())
+          );
+          
+          // 保存新学校到数据库（跳过已存在的）
+          let savedCount = 0;
           for (const school of amapSchools) {
+            const schoolKey = `${school.school_name}_${school.address || ''}`.trim().toLowerCase();
+            
+            // 跳过已存在的学校
+            if (existingSchoolKeys.has(schoolKey)) {
+              continue;
+            }
             const insertQuery = `
               INSERT INTO school_basic_info (
                 school_name, school_type, province, city, district, address,
@@ -189,9 +204,18 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
       });
     }
 
-    // 3. 对每所学校进行AI分析
-    const schoolsWithAnalysis = await Promise.all(
-      schools.map(async (school) => {
+    // 3. 对每所学校进行AI分析（限制并发，避免API限流）
+    // 限制并发数量为5，避免同时发起过多请求
+    const CONCURRENT_LIMIT = 5;
+    const schoolsWithAnalysis: any[] = [];
+    
+    // 将学校列表分块处理
+    for (let i = 0; i < schools.length; i += CONCURRENT_LIMIT) {
+      const chunk = schools.slice(i, i + CONCURRENT_LIMIT);
+      logger.info(`处理学校批次: ${i + 1}-${Math.min(i + CONCURRENT_LIMIT, schools.length)}/${schools.length}`);
+      
+      const chunkResults = await Promise.allSettled(
+        chunk.map(async (school) => {
         try {
           // 检查是否已有AI分析结果
           const existingAnalysis = await sequelize.query(`
@@ -268,7 +292,8 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
                 }
               ], {
                 temperature: 0.7,
-                maxTokens: 500
+                maxTokens: 500,
+                timeout: 30000 // 30秒超时
               });
 
               const analysisText = result.content;
@@ -372,8 +397,47 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
             }
           };
         }
-      })
-    );
+        })
+      );
+      
+      // 处理每个批次的结果
+      chunkResults.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          schoolsWithAnalysis.push(result.value);
+        } else {
+          logger.error(`学校处理失败:`, result.reason);
+          // 即使失败也添加一个默认结果，避免前端报错
+          const school = chunk[index];
+          if (school) {
+            schoolsWithAnalysis.push({
+              id: school.id?.toString() || `temp_${Math.random()}`,
+              name: school.name || '未知',
+              type: school.type || '未知',
+              student_count: school.student_count || 0,
+              studentCount: school.student_count || 0,
+              teacher_count: school.teacher_count || 0,
+              rating: 50,
+              address: school.address || '',
+              longitude: school.longitude || 0,
+              latitude: school.latitude || 0,
+              aiAnalysis: `分析失败: ${result.reason?.message || '未知错误'}`,
+              businessValue: {
+                level: 'medium',
+                score: 50,
+                reasons: ['分析失败，请重试']
+              }
+            });
+          }
+        }
+      });
+      
+      // 批次之间添加短暂延迟，避免API限流
+      if (i + CONCURRENT_LIMIT < schools.length) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    logger.info(`✅ AI分析完成: 共处理 ${schoolsWithAnalysis.length}/${schools.length} 所学校`);
 
     res.json({
       success: true,

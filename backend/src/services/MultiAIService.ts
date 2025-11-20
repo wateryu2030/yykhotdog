@@ -126,77 +126,117 @@ export class MultiAIService {
   }
 
   /**
-   * 调用OpenAI模型
+   * 调用OpenAI模型（带超时控制）
    */
   private async callOpenAI(
     client: OpenAI,
     model: string,
     messages: Array<{ role: string; content: string }>,
     temperature: number = 0.7,
-    maxTokens: number = 500
+    maxTokens: number = 500,
+    timeout: number = 30000 // 默认30秒超时
   ): Promise<string> {
-    const response = await client.chat.completions.create({
+    // 创建超时Promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`AI请求超时（${timeout / 1000}秒）`)), timeout);
+    });
+
+    // 创建实际的API调用Promise
+    const apiPromise = client.chat.completions.create({
       model,
       messages: messages as any,
       temperature,
       max_tokens: maxTokens
-    });
-    return response.choices[0]?.message?.content || '';
+    }).then(response => response.choices[0]?.message?.content || '');
+
+    // 使用Promise.race实现超时控制
+    try {
+      const content = await Promise.race([apiPromise, timeoutPromise]);
+      if (!content) {
+        throw new Error('AI返回内容为空');
+      }
+      return content;
+    } catch (error: any) {
+      // 如果是超时错误，明确提示
+      if (error.message?.includes('超时') || error.message?.includes('timeout')) {
+        throw new Error(`AI请求超时（${timeout / 1000}秒），请稍后重试`);
+      }
+      throw error;
+    }
   }
 
   /**
-   * 调用Gemini模型（使用REST API）
+   * 调用Gemini模型（使用REST API，带超时控制）
    */
   private async callGemini(
     config: any,
     prompt: string,
     temperature: number = 0.7,
-    maxTokens: number = 500
+    maxTokens: number = 500,
+    timeout: number = 30000 // 默认30秒超时
   ): Promise<string> {
     // Gemini API v1beta格式
     const url = `${config.baseURL}/models/${config.model}:generateContent?key=${config.apiKey}`;
     
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: prompt
-            }]
-          }],
-          generationConfig: {
-            temperature,
-            maxOutputTokens: maxTokens,
-            topP: 0.95,
-            topK: 40
+      // 创建AbortController用于超时控制
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: prompt
+              }]
+            }],
+            generationConfig: {
+              temperature,
+              maxOutputTokens: maxTokens,
+              topP: 0.95,
+              topK: 40
+            }
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          let errorMessage = `Gemini API错误: ${response.status}`;
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMessage = errorData.error?.message || errorText;
+          } catch {
+            errorMessage = `${errorMessage} - ${errorText}`;
           }
-        })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = `Gemini API错误: ${response.status}`;
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.error?.message || errorText;
-        } catch {
-          errorMessage = `${errorMessage} - ${errorText}`;
+          throw new Error(errorMessage);
         }
-        throw new Error(errorMessage);
-      }
 
-      const data = await response.json() as any;
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (!text) {
-        throw new Error('Gemini返回内容为空');
+        const data = await response.json() as any;
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (!text) {
+          throw new Error('Gemini返回内容为空');
+        }
+        
+        return text;
+      } catch (error: any) {
+        clearTimeout(timeoutId);
+        
+        // 如果是超时错误
+        if (error.name === 'AbortError' || error.message?.includes('timeout')) {
+          throw new Error(`Gemini请求超时（${timeout / 1000}秒），请稍后重试`);
+        }
+        
+        throw error;
       }
-      
-      return text;
     } catch (error: any) {
       // 重新抛出错误，让上层处理
       throw error;
@@ -205,6 +245,7 @@ export class MultiAIService {
 
   /**
    * 调用AI模型（自动切换）
+   * 添加超时和重试机制
    */
   async chatCompletion(
     messages: Array<{ role: string; content: string }>,
@@ -212,12 +253,16 @@ export class MultiAIService {
       temperature?: number;
       maxTokens?: number;
       modelOrder?: AIModel[];
+      timeout?: number; // 每个模型调用的超时时间（毫秒）
+      maxRetries?: number; // 最大重试次数
     } = {}
   ): Promise<{ content: string; model: AIModel; error?: string }> {
     const {
       temperature = 0.7,
       maxTokens = 500,
-      modelOrder = this.defaultOrder
+      modelOrder = this.defaultOrder,
+      timeout = 30000, // 默认30秒超时
+      maxRetries = 1 // 每个模型最多重试1次
     } = options;
 
     const errors: Array<{ model: AIModel; error: string }> = [];
@@ -249,7 +294,8 @@ export class MultiAIService {
               modelConfig.model || 'gpt-4o-mini',
               messages,
               temperature,
-              maxTokens
+              maxTokens,
+              timeout
             );
             break;
           }
@@ -267,7 +313,8 @@ export class MultiAIService {
               geminiConfig,
               prompt,
               temperature,
-              maxTokens
+              maxTokens,
+              timeout
             );
             break;
           }

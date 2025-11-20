@@ -1097,32 +1097,39 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       const district = selectedRegionNames[2];
       console.log('🚀 开始增强AI选址分析:', { cityName, district, selectedRegionNames });
 
-      // 1. 获取学校数据（带AI分析）- 直接以区县级别搜索
+      // 1. 获取学校数据（带AI分析）
       setAnalysisMessage('正在分析学校密度和AI评估...');
       
-      // 构建搜索位置：优先使用区县名称，如果是直辖市则使用城市名称
-      let searchLocation = district;
-      if (district === '市辖区' || district === '省直辖县级行政区划') {
-        // 直辖市或省管县情况，使用城市名称
-        searchLocation = cityName;
+      // 构建API URL：API格式为 /api/enhanced-ai-analysis/schools-with-analysis/:city/:district?
+      // 需要正确传递城市名称和区县名称
+      // AI智能分析时，forceRefresh=true，强制从高德地图获取最新数据
+      const encodedCity = encodeURIComponent(cityName);
+      let apiUrl = `/api/enhanced-ai-analysis/schools-with-analysis/${encodedCity}`;
+      
+      // 如果选择了区县且不是特殊行政区划，添加到URL中
+      if (district && district !== '市辖区' && district !== '省直辖县级行政区划') {
+        const encodedDistrict = encodeURIComponent(district);
+        apiUrl += `/${encodedDistrict}`;
       }
       
-      console.log('🔍 搜索位置:', searchLocation);
+      // AI智能分析时，强制刷新（从高德地图获取最新数据）
+      apiUrl += '?saveToDB=false&forceRefresh=true';
       
-      // 尝试按区县级别搜索 - 使用URL编码
-      const encodedLocation = encodeURIComponent(searchLocation);
-      let res = await fetch(`/api/enhanced-ai-analysis/schools-with-analysis/${encodedLocation}?saveToDB=false`);
+      console.log('🔍 AI智能分析 - 调用API（强制刷新）:', apiUrl);
+      
+      let res = await fetch(apiUrl);
       let data = await res.json();
 
-      // 处理无数据情况：尝试按城市级别搜索
-      if (!data.success || data.data.length === 0) {
-        setAnalysisMessage('正在尝试城市级查询...');
-        const encodedCity = encodeURIComponent(cityName);
-        res = await fetch(`/api/enhanced-ai-analysis/schools-with-analysis/${encodedCity}?saveToDB=false`);
+      // 处理无数据情况：如果按区县查询没有结果，尝试按城市级别查询（也强制刷新）
+      if (!data.success || (data.data && data.data.length === 0)) {
+        setAnalysisMessage('区县级查询无结果，正在尝试城市级查询...');
+        const cityOnlyUrl = `/api/enhanced-ai-analysis/schools-with-analysis/${encodedCity}?saveToDB=false&forceRefresh=true`;
+        console.log('🔍 回退到城市级查询（强制刷新）:', cityOnlyUrl);
+        res = await fetch(cityOnlyUrl);
         data = await res.json();
 
-        if (!data.success || data.data.length === 0) {
-          throw new Error(`在${searchLocation}未找到学校数据，请检查地区或重试`);
+        if (!data.success || (data.data && data.data.length === 0)) {
+          throw new Error(`在${cityName}${district ? district : ''}未找到学校数据，请检查地区或重试`);
         }
       }
 
@@ -1135,6 +1142,12 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       let envData: any = { success: false, data: null };
       try {
         // 构建完整的地址用于地理编码（避免400错误）
+        // 优先使用区县名称，如果是特殊行政区划则使用城市名称
+        let searchLocation = district;
+        if (district === '市辖区' || district === '省直辖县级行政区划' || !district) {
+          searchLocation = cityName;
+        }
+        
         let fullLocation = searchLocation;
         if (selectedRegionNames.length >= 1) {
           // 如果有省份信息，拼接完整地址
