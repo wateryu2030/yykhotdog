@@ -129,6 +129,46 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
           district: s.district
         })));
       }
+      
+      // 如果没有数据，立即返回，避免继续处理
+      if (schools.length === 0) {
+        logger.info(`没有找到学校数据，立即返回空结果`);
+        return res.json({
+          success: true,
+          message: `在${city}${district ? district : ''}未找到学校数据`,
+          data: []
+        });
+      }
+      
+      // 在正常查询模式下，先返回基础数据（不包含AI分析），避免前端超时
+      // AI分析可以在后台异步进行，或者用户点击"AI智能分析"时再进行
+      logger.info(`正常查询模式：立即返回${schools.length}所学校的基础数据（不包含AI分析）`);
+      
+      // 直接返回基础数据，不进行AI分析
+      const basicSchools = schools.map((school: any) => ({
+        id: school.id?.toString() || `temp_${Math.random()}`,
+        name: school.name,
+        type: school.type,
+        student_count: school.student_count || 0,
+        studentCount: school.student_count || 0,
+        teacher_count: school.teacher_count || 0,
+        address: school.address,
+        longitude: school.longitude,
+        latitude: school.latitude,
+        province: school.province,
+        city: school.city,
+        district: school.district,
+        established_year: school.established_year,
+        school_level: school.school_level,
+        aiAnalysis: '',
+        businessValue: null
+      }));
+      
+      return res.json({
+        success: true,
+        data: basicSchools,
+        message: `找到${schools.length}所学校（基础数据，点击AI智能分析可获取详细分析）`
+      });
     }
 
     // 2. 如果forceRefresh=true（用户点击AI智能分析），强制从高德地图获取最新数据
