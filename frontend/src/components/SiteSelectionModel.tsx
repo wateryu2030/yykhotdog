@@ -2334,14 +2334,14 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
         }));
         
         // 检查有效坐标的数据数量
-        const validShops = formattedShops.filter(shop => 
+        const validShops = formattedShops.filter((shop: any) => 
           shop.latitude && shop.longitude && 
           shop.latitude !== 0 && shop.longitude !== 0
         );
         console.log(`✅ 有效坐标的铺位: ${validShops.length}/${formattedShops.length}`);
         
         if (validShops.length > 0) {
-          console.log('📍 铺位坐标示例:', validShops.slice(0, 3).map(s => 
+          console.log('📍 铺位坐标示例:', validShops.slice(0, 3).map((s: any) => 
             `${s.shop_name}: (${s.longitude}, ${s.latitude})`
           ));
         }
