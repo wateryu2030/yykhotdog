@@ -184,6 +184,8 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
               } else {
                 savedCount++; // 即使出错也计数（可能是并发插入导致的）
               }
+            } else {
+              savedCount++; // 成功插入
             }
           }
           
