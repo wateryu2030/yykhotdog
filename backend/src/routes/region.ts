@@ -159,7 +159,7 @@ function buildCascadeData(regions: any[]) {
         // 父节点不存在，作为顶级节点
         result.push(region);
         orphanCount++;
-        logger.debug(`地区 ${region.label} 的父节点 ${parentKey} 不存在，作为顶级节点`);
+        logger.warn(`地区 ${region.label} 的父节点 ${parentKey} 不存在，作为顶级节点`);
       }
     } else {
       // 没有父节点，作为顶级节点
