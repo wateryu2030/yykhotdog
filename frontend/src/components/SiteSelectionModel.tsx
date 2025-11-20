@@ -2322,8 +2322,21 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       const district = selectedRegionNames.length >= 3 ? selectedRegionNames[2] : '';
       const url = buildRegionUrl(cityName, district);
       
+      console.log(`📤 请求API: ${url}?saveToDB=false&limit=500`);
       const res = await fetch(`${url}?saveToDB=false&limit=500`);
+      
+      if (!res.ok) {
+        console.error(`❌ API请求失败: ${res.status} ${res.statusText}`);
+        setShops([]);
+        return;
+      }
+      
       const data = await res.json();
+      console.log(`📥 API响应:`, { 
+        success: data.success, 
+        dataCount: Array.isArray(data.data) ? data.data.length : 0,
+        message: data.message 
+      });
       
       // 处理响应：无论是否有数据，都返回成功，只是data为空数组
       if (data.success !== false) {

@@ -231,20 +231,11 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
       }
     }
 
-    // 如果没有数据且不是强制刷新模式，直接返回空数组（用于前端展示空状态）
-    if (schools.length === 0 && !shouldForceRefresh) {
+    // 如果没有数据，直接返回空数组（无论是否强制刷新）
+    if (schools.length === 0) {
       return res.json({
         success: true,
         message: `在${city}${district ? district : ''}未找到学校数据`,
-        data: []
-      });
-    }
-    
-    // 如果强制刷新模式下也没有数据，返回提示信息
-    if (schools.length === 0 && shouldForceRefresh) {
-      return res.json({
-        success: false,
-        message: `在${city}${district ? district : ''}未找到学校数据，请检查地区或重试`,
         data: []
       });
     }
