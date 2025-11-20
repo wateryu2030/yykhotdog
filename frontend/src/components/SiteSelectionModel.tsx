@@ -2319,6 +2319,8 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       if (data.success && data.data) {
         // 转换学校数据格式为shops格式
         const schools = Array.isArray(data.data) ? data.data : [];
+        console.log(`📥 API返回${schools.length}所学校数据 (${cityName}${district ? '/' + district : ''})`);
+        
         const formattedShops = schools.map((school: any) => ({
           shop_name: school.name || school.school_name || '学校',
           shop_address: school.address || '',
@@ -2331,10 +2333,31 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
           type: 'school' // 标识为学校数据
         }));
         
+        // 检查有效坐标的数据数量
+        const validShops = formattedShops.filter(shop => 
+          shop.latitude && shop.longitude && 
+          shop.latitude !== 0 && shop.longitude !== 0
+        );
+        console.log(`✅ 有效坐标的铺位: ${validShops.length}/${formattedShops.length}`);
+        
+        if (validShops.length > 0) {
+          console.log('📍 铺位坐标示例:', validShops.slice(0, 3).map(s => 
+            `${s.shop_name}: (${s.longitude}, ${s.latitude})`
+          ));
+        }
+        
         setShops(formattedShops);
-        console.log(`✅ 加载${formattedShops.length}所学校数据`);
+        console.log(`✅ 已设置${formattedShops.length}个铺位到状态`);
+        
+        // 如果地图已经加载，立即添加标记
+        if (amapRef.current && mapLoaded) {
+          console.log('🗺️ 地图已加载，立即添加铺位标记...');
+          setTimeout(() => {
+            addShopMarkersToMap(amapRef.current, formattedShops);
+          }, 500);
+        }
       } else {
-        console.warn('加载学校数据失败:', data.message);
+        console.warn('❌ 加载学校数据失败:', data.message || '未知错误');
         setShops([]);
       }
     } catch (error) {
@@ -2349,7 +2372,18 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
    * 在地图上添加学校标记
    */
   const addShopMarkersToMap = useCallback((map: any, shops: any[]) => {
-    if (!map || !shops || shops.length === 0) return;
+    if (!map) {
+      console.error('❌ 无法添加标记：地图对象为空');
+      return;
+    }
+    
+    if (!shops || shops.length === 0) {
+      console.warn('⚠️ 无法添加标记：铺位数据为空');
+      return;
+    }
+    
+    console.log('📍 开始添加铺位标记，铺位数量:', shops.length, '地图对象:', !!map);
+    console.log('📍 铺位数据示例:', shops.slice(0, 3));
 
     let addedCount = 0;
     shops.forEach((shop: any) => {
