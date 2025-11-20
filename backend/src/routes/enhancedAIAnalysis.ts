@@ -8,6 +8,14 @@ import { multiAIService } from '../services/MultiAIService';
 
 const router = Router();
 
+const normalizeNullableString = (value?: string | null): string | null => {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  const trimmed = `${value}`.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
 /**
  * 获取学校数据并带AI分析
  * GET /api/enhanced-ai-analysis/schools-with-analysis/:city/:district?
@@ -242,8 +250,8 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
                   teacher_count: details.teacher_count || 0,
                   established_year: details.established_year,
                   school_level: details.school_level,
-                  contact_phone: school.contact_phone,
-                  description: school.description,
+                  contact_phone: normalizeNullableString(school.contact_phone),
+                  description: normalizeNullableString(school.description),
                 },
               });
               savedCount++; // 成功插入

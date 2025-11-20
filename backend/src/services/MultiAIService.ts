@@ -277,83 +277,91 @@ export class MultiAIService {
         continue;
       }
 
-      try {
-        logger.info(`尝试使用 ${modelConfig.name} 模型...`);
-        let content = '';
+      let attempt = 0;
 
-        switch (modelType) {
-          case 'openai':
-          case 'doubao':
-          case 'deepseek': {
-            const client = this.clients.get(modelType);
-            if (!client) {
-              throw new Error(`${modelConfig.name}客户端未初始化`);
+      while (attempt < maxRetries) {
+        attempt += 1;
+
+        try {
+          logger.info(`尝试使用 ${modelConfig.name} 模型（第${attempt}次）...`);
+          let content = '';
+
+          switch (modelType) {
+            case 'openai':
+            case 'doubao':
+            case 'deepseek': {
+              const client = this.clients.get(modelType);
+              if (!client) {
+                throw new Error(`${modelConfig.name}客户端未初始化`);
+              }
+              content = await this.callOpenAI(
+                client,
+                modelConfig.model || 'gpt-4o-mini',
+                messages,
+                temperature,
+                maxTokens,
+                timeout
+              );
+              break;
             }
-            content = await this.callOpenAI(
-              client,
-              modelConfig.model || 'gpt-4o-mini',
-              messages,
-              temperature,
-              maxTokens,
-              timeout
-            );
-            break;
+
+            case 'gemini': {
+              const prompt = messages
+                .map(m => `${m.role === 'system' ? '系统' : m.role === 'user' ? '用户' : '助手'}: ${m.content}`)
+                .join('\n\n');
+              const geminiConfig = this.clients.get('gemini');
+              if (!geminiConfig) {
+                throw new Error('Gemini客户端未初始化');
+              }
+              content = await this.callGemini(
+                geminiConfig,
+                prompt,
+                temperature,
+                maxTokens,
+                timeout
+              );
+              break;
+            }
+
+            default:
+              throw new Error(`不支持的模型类型: ${modelType}`);
           }
 
-          case 'gemini': {
-            // Gemini需要将消息转换为单个prompt
-            const prompt = messages
-              .map(m => `${m.role === 'system' ? '系统' : m.role === 'user' ? '用户' : '助手'}: ${m.content}`)
-              .join('\n\n');
-            const geminiConfig = this.clients.get('gemini');
-            if (!geminiConfig) {
-              throw new Error('Gemini客户端未初始化');
-            }
-            content = await this.callGemini(
-              geminiConfig,
-              prompt,
-              temperature,
-              maxTokens,
-              timeout
-            );
-            break;
+          if (content && content.trim()) {
+            logger.info(`✅ ${modelConfig.name} 模型调用成功（第${attempt}次尝试）`);
+            return { content: content.trim(), model: modelType };
           }
 
-          default:
-            throw new Error(`不支持的模型类型: ${modelType}`);
-        }
-
-        if (content && content.trim()) {
-          logger.info(`✅ ${modelConfig.name} 模型调用成功`);
-          return { content: content.trim(), model: modelType };
-        } else {
           throw new Error('返回内容为空');
+        } catch (error: any) {
+          const errorMessage = error?.message || '未知错误';
+          const errorCode = error?.status || error?.code || 'UNKNOWN';
+          
+          logger.warn(`❌ ${modelConfig.name} 模型调用失败（第${attempt}次）:`, {
+            error: errorMessage,
+            code: errorCode
+          });
+
+          const canRetry =
+            attempt < maxRetries &&
+            errorCode !== 401; // 认证失败不重试
+
+          if (!canRetry) {
+            errors.push({
+              model: modelType,
+              error: `${modelConfig.name}: ${errorMessage}`
+            });
+
+            if (errorCode === 401) {
+              logger.warn(`跳过 ${modelConfig.name}（认证失败）`);
+            }
+
+            break;
+          }
+
+          // 小延迟再重试，避免立即打满
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
-      } catch (error: any) {
-        const errorMessage = error?.message || '未知错误';
-        const errorCode = error?.status || error?.code || 'UNKNOWN';
-        
-        logger.warn(`❌ ${modelConfig.name} 模型调用失败:`, {
-          error: errorMessage,
-          code: errorCode
-        });
-
-        errors.push({
-          model: modelType,
-          error: `${modelConfig.name}: ${errorMessage}`
-        });
-
-        // 判断是否应该继续尝试下一个模型
-        // 如果是认证错误（401），跳过该模型
-        // 如果是频率限制（429），继续尝试下一个模型
-        // 如果是服务器错误（5xx），继续尝试下一个模型
-        if (errorCode === 401) {
-          logger.warn(`跳过 ${modelConfig.name}（认证失败）`);
-          continue;
-        }
-
-        // 其他错误继续尝试下一个模型
-        continue;
       }
     }
 
