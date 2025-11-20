@@ -177,19 +177,19 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
                   description: school.description,
                 },
               });
+              savedCount++; // 成功插入
             } catch (insertError: any) {
               // 忽略重复数据错误
               if (!insertError.message?.includes('UNIQUE') && !insertError.message?.includes('PRIMARY KEY')) {
                 logger.warn(`插入学校数据失败: ${school.school_name}`, insertError);
               } else {
-                savedCount++; // 即使出错也计数（可能是并发插入导致的）
+                // 重复数据错误也计数（可能是并发插入导致的）
+                savedCount++;
               }
-            } else {
-              savedCount++; // 成功插入
             }
           }
           
-          logger.info(`AI智能分析完成数据同步: 新增${savedCount}所，更新${updatedCount}所`);
+          logger.info(`AI智能分析完成数据同步: 新增${savedCount}所`);
 
           // 重新查询数据库
           schools = await sequelize.query(query, {
