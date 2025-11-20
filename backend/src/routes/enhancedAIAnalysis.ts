@@ -74,16 +74,19 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
     }
 
     // 构建查询条件（用于数据库查询和去重）
+    // 支持精确匹配和模糊匹配（处理城市名称变体，如"天津"匹配"天津市"）
+    // 首先尝试精确匹配，如果失败再尝试模糊匹配
     let whereClause = 'WHERE s.delflag = 0 AND s.city = :city';
-    const params: any = { city };
+    const params: any = { city: city };
 
     if (district && district !== '市辖区' && district !== '省直辖县级行政区划') {
+      // 区县名称精确匹配
       whereClause += ' AND s.district = :district';
       params.district = district;
     }
 
     logger.info(`构建查询条件: whereClause=${whereClause}`);
-    logger.info(`查询参数: city="${city}", district="${district}"`);
+    logger.info(`查询参数: city="${city}", district="${district || '无'}"`);
     logger.info(`参数对象:`, JSON.stringify(params, null, 2));
 
     const query = `

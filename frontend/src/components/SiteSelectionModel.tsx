@@ -226,11 +226,17 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
    * 构建地区查询URL（处理直辖市、省直辖县等特殊行政区划）
    */
   const buildRegionUrl = useCallback((city: string, district?: string) => {
-    let url = `/api/enhanced-ai-analysis/schools-with-analysis/${city}`;
-    if (district) {
+    // URL编码中文参数
+    const encodedCity = encodeURIComponent(city);
+    let url = `/api/enhanced-ai-analysis/schools-with-analysis/${encodedCity}`;
+    if (district && district !== '市辖区' && district !== '省直辖县级行政区划') {
       const isSpecialDistrict = district === '省直辖县级行政区划' || district.includes('直辖');
-      if (!isSpecialDistrict) url += `/${district}`;
+      if (!isSpecialDistrict) {
+        const encodedDistrict = encodeURIComponent(district);
+        url += `/${encodedDistrict}`;
+      }
     }
+    console.log(`🔗 构建API URL: ${url} (city: ${city}, district: ${district})`);
     return url;
   }, []);
 
