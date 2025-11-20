@@ -181,9 +181,13 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
               // 忽略重复数据错误
               if (!insertError.message?.includes('UNIQUE') && !insertError.message?.includes('PRIMARY KEY')) {
                 logger.warn(`插入学校数据失败: ${school.school_name}`, insertError);
+              } else {
+                savedCount++; // 即使出错也计数（可能是并发插入导致的）
               }
             }
           }
+          
+          logger.info(`AI智能分析完成数据同步: 新增${savedCount}所，更新${updatedCount}所`);
 
           // 重新查询数据库
           schools = await sequelize.query(query, {
@@ -196,8 +200,18 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
       }
     }
 
-    if (schools.length === 0) {
-      return res.status(404).json({
+    // 如果没有数据且不是强制刷新模式，直接返回空数组（用于前端展示空状态）
+    if (schools.length === 0 && !shouldForceRefresh) {
+      return res.json({
+        success: true,
+        message: `在${city}${district ? district : ''}未找到学校数据`,
+        data: []
+      });
+    }
+    
+    // 如果强制刷新模式下也没有数据，返回提示信息
+    if (schools.length === 0 && shouldForceRefresh) {
+      return res.json({
         success: false,
         message: `在${city}${district ? district : ''}未找到学校数据，请检查地区或重试`,
         data: []

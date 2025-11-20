@@ -2325,9 +2325,17 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       const res = await fetch(`${url}?saveToDB=false&limit=500`);
       const data = await res.json();
       
-      if (data.success && data.data) {
+      // 处理响应：无论是否有数据，都返回成功，只是data为空数组
+      if (data.success !== false) {
         // 转换学校数据格式为shops格式
         const schools = Array.isArray(data.data) ? data.data : [];
+        
+        if (schools.length === 0) {
+          console.log(`ℹ️ ${cityName}${district ? '/' + district : ''}暂无学校数据`);
+          setShops([]);
+          return; // 没有数据，直接返回
+        }
+        
         console.log(`📥 API返回${schools.length}所学校数据 (${cityName}${district ? '/' + district : ''})`);
         
         const formattedShops = schools.map((school: any) => ({
@@ -2366,6 +2374,7 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
           }, 500);
         }
       } else {
+        // 只有在明确失败时才显示错误
         console.warn('❌ 加载学校数据失败:', data.message || '未知错误');
         setShops([]);
       }
@@ -2532,8 +2541,15 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
     }
   }, []);
 
-  // 城市地图模式：当城市名称或区县变化时，加载铺位数据
+  // 城市地图模式：当城市名称或区县变化时，加载铺位数据（使用防抖避免重复调用）
+  const loadShopsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   useEffect(() => {
+    // 清除之前的定时器
+    if (loadShopsTimeoutRef.current) {
+      clearTimeout(loadShopsTimeoutRef.current);
+    }
+    
     // 无论是城市地图模式还是智能分析模式，只要选择了区县，都应该加载数据
     if (cityName && cityName !== '未知城市') {
       const district = selectedRegionNames.length >= 3 ? selectedRegionNames[2] : '';
@@ -2541,16 +2557,26 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       
       // 如果选择了区县，或者在城市地图模式下，都加载数据
       if (hasDistrict || showCityMapOnly) {
-        console.log('🔄 城市或区县变化，重新加载铺位数据:', { 
-          cityName, 
-          district, 
-          showCityMapOnly,
-          hasDistrict 
-        });
-        loadShopsForCity();
+        // 使用防抖，避免快速切换时重复调用
+        loadShopsTimeoutRef.current = setTimeout(() => {
+          console.log('🔄 城市或区县变化，重新加载铺位数据:', { 
+            cityName, 
+            district, 
+            showCityMapOnly,
+            hasDistrict 
+          });
+          loadShopsForCity();
+        }, 300); // 300ms防抖
       }
     }
-  }, [showCityMapOnly, cityName, selectedRegionNames, loadShopsForCity]);
+    
+    // 清理函数
+    return () => {
+      if (loadShopsTimeoutRef.current) {
+        clearTimeout(loadShopsTimeoutRef.current);
+      }
+    };
+  }, [showCityMapOnly, cityName, selectedRegionNames.length, loadShopsForCity]); // 只依赖长度，避免对象引用变化导致重复调用
 
   // 城市地图模式：初始化地图并添加铺位标记
   useEffect(() => {
@@ -3196,3 +3222,4 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
 };
 
 export default SiteSelectionModel; 
+
