@@ -49,8 +49,17 @@ const app = express();
 const PORT = process.env['PORT'] || 3001;
 
 // 中间件配置
-app.use(helmet());
-app.use(cors());
+app.use(helmet({
+  contentSecurityPolicy: false, // 允许外部资源加载（如高德地图）
+}));
+
+// CORS配置：允许跨域访问（支持IP访问）
+app.use(cors({
+  origin: true, // 允许所有来源（生产环境建议限制具体域名）
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(compression());
 app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));

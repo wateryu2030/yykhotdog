@@ -592,7 +592,7 @@ const CustomerCompare: React.FC = () => {
       
       // 获取客户列表并进行群体分析
       const customersResponse = await fetch(
-        `http://localhost:3001/api/customer-profile/customers?startDate=${startDate}&endDate=${endDate}&pageSize=1000`
+        `/api/customer-profile/customers?startDate=${startDate}&endDate=${endDate}&pageSize=1000`
       );
       const customersResult = await customersResponse.json();
       

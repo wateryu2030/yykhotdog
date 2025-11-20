@@ -1,7 +1,28 @@
 // API配置
+// 支持通过环境变量配置后端地址，默认使用相对路径（开发时通过proxy，生产时使用window.location.origin）
+const getBaseURL = () => {
+  // 生产环境：使用环境变量或当前域名
+  if (process.env.NODE_ENV === 'production') {
+    // 优先使用环境变量 REACT_APP_API_BASE_URL
+    if (process.env.REACT_APP_API_BASE_URL) {
+      return process.env.REACT_APP_API_BASE_URL;
+    }
+    // 否则使用当前域名（支持IP访问）
+    return `${window.location.protocol}//${window.location.host}/api`;
+  }
+  
+  // 开发环境：优先使用环境变量，否则使用proxy（相对路径）
+  if (process.env.REACT_APP_API_BASE_URL) {
+    return process.env.REACT_APP_API_BASE_URL;
+  }
+  
+  // 默认使用相对路径（开发环境通过proxy转发）
+  return '/api';
+};
+
 export const API_CONFIG = {
-  // 直接连接到后端服务
-  BASE_URL: 'http://localhost:3001/api',
+  // 动态获取后端服务地址
+  BASE_URL: getBaseURL(),
   
   // 后端API端点
   BACKEND: {

@@ -430,7 +430,7 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
       const isSpecial = district && (district === '省直辖县级行政区划' || district.includes('直辖'));
       const location = isSpecial ? cityName : `${cityName}${district || ''}`;
 
-      const res = await fetch('http://localhost:3001/api/enhanced-ai-analysis/analyze-business-environment', {
+      const res = await fetch('/api/enhanced-ai-analysis/analyze-business-environment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ location, poiList, saveToDB })
