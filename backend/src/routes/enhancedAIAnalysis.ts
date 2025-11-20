@@ -82,6 +82,10 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
       params.district = district;
     }
 
+    logger.info(`构建查询条件: whereClause=${whereClause}`);
+    logger.info(`查询参数: city="${city}", district="${district}"`);
+    logger.info(`参数对象:`, JSON.stringify(params, null, 2));
+
     const query = `
       SELECT 
         s.id,
@@ -106,7 +110,25 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
 
     let schools: any[] = [];
 
-    // 1. 如果forceRefresh=true（用户点击AI智能分析），强制从高德地图获取最新数据
+    // 1. 如果forceRefresh=false（正常查询模式），先从数据库查询现有数据
+    if (!shouldForceRefresh) {
+      logger.info(`正常查询模式：从数据库查询${city}${district ? '/' + district : ''}的学校数据`);
+      schools = await sequelize.query(query, {
+        type: QueryTypes.SELECT,
+        replacements: params,
+      }) as any[];
+      
+      logger.info(`数据库查询结果: 找到${schools.length}所学校`);
+      if (schools.length > 0) {
+        logger.info(`前3所学校示例:`, schools.slice(0, 3).map((s: any) => ({
+          name: s.name,
+          city: s.city,
+          district: s.district
+        })));
+      }
+    }
+
+    // 2. 如果forceRefresh=true（用户点击AI智能分析），强制从高德地图获取最新数据
     if (shouldForceRefresh) {
       logger.info(`AI智能分析模式：从高德地图获取${city}${district ? district : ''}的最新学校数据`);
       
@@ -196,10 +218,13 @@ router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: 
           logger.info(`AI智能分析完成数据同步: 新增${savedCount}所`);
 
           // 重新查询数据库
-          schools = await sequelize.query(query, {
+          const refreshedSchools = await sequelize.query(query, {
             type: QueryTypes.SELECT,
             replacements: params,
           }) as any[];
+          
+          logger.info(`刷新后数据库查询结果: 找到${refreshedSchools.length}所学校`);
+          schools = refreshedSchools;
         }
       } catch (amapError) {
         logger.error('从高德地图获取学校数据失败:', amapError);
