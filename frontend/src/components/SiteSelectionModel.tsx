@@ -966,21 +966,30 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
           
           let targetCity = secondLevel;
           
-          // 特殊处理：直辖市
+          // 特殊处理：直辖市（如：天津市/市辖区/和平区）
           if (secondLevel === '市辖区' || secondLevel === '县') {
-            targetCity = provinceName;
+            targetCity = provinceName; // 使用省份名称作为城市名称
+            console.log('✅ 检测到直辖市，使用省份名称作为城市:', targetCity);
           } 
-          // 特殊处理：省管县
+          // 特殊处理：省管县（如：湖北省/省直辖县级行政区划/仙桃市）
           else if (secondLevel === '省直辖县级行政区划' || secondLevel === '省直辖县') {
             targetCity = thirdLevel || provinceName;
+            console.log('✅ 检测到省管县，使用区县名称作为城市:', targetCity);
           }
           // 其他特殊情况
           else if (secondLevel && (secondLevel.includes('直辖') || secondLevel === '')) {
             targetCity = thirdLevel || provinceName;
+            console.log('✅ 检测到特殊行政区划，调整城市名称:', targetCity);
+          }
+          // 普通情况：直接使用第二级作为城市名称
+          else if (secondLevel) {
+            targetCity = secondLevel;
+            console.log('✅ 使用第二级作为城市名称:', targetCity);
           }
           
           if (targetCity && targetCity !== cityName) {
             setCityName(targetCity);
+            console.log('✅ 设置城市名称:', targetCity, '区县:', thirdLevel);
           }
         }
       }
@@ -2525,12 +2534,23 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
 
   // 城市地图模式：当城市名称或区县变化时，加载铺位数据
   useEffect(() => {
-    if (showCityMapOnly && cityName && cityName !== '未知城市') {
+    // 无论是城市地图模式还是智能分析模式，只要选择了区县，都应该加载数据
+    if (cityName && cityName !== '未知城市') {
       const district = selectedRegionNames.length >= 3 ? selectedRegionNames[2] : '';
-      console.log('🔄 城市或区县变化，重新加载铺位数据:', { cityName, district });
-      loadShopsForCity();
+      const hasDistrict = district && district !== '';
+      
+      // 如果选择了区县，或者在城市地图模式下，都加载数据
+      if (hasDistrict || showCityMapOnly) {
+        console.log('🔄 城市或区县变化，重新加载铺位数据:', { 
+          cityName, 
+          district, 
+          showCityMapOnly,
+          hasDistrict 
+        });
+        loadShopsForCity();
+      }
     }
-  }, [showCityMapOnly, cityName, selectedRegionNames.length, loadShopsForCity]);
+  }, [showCityMapOnly, cityName, selectedRegionNames, loadShopsForCity]);
 
   // 城市地图模式：初始化地图并添加铺位标记
   useEffect(() => {

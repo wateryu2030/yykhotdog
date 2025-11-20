@@ -120,6 +120,13 @@ const SiteSelection: React.FC = () => {
       setSharedRegionNames(regionNames);
       console.log('设置共享地区代码:', value);
       console.log('设置共享地区名称:', regionNames);
+      
+      // 如果选择到区县级别（3级），自动切换到城市地图标签页并加载数据
+      if (value.length >= 3 && selectedDistrict) {
+        console.log('✅ 已选择到区县级别，自动切换到城市地图标签页');
+        setActiveTab('city-map');
+        message.info(`已切换到城市地图，正在加载${selectedCity}${selectedDistrict}的数据...`);
+      }
     } else {
       // 清空选择
       setSelectedCity('');
