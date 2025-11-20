@@ -1631,18 +1631,25 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
         setMapLoaded(true);
         setMapError('');
         console.log('✅ 基础地图初始化完成，中心点:', defaultCenter, '城市:', cityName);
+        console.log('📍 准备添加铺位标记，铺位数量:', shops.length);
         
-        // 如果有学校数据，延迟添加标记（确保地图完全加载）
+        // 如果有学校/铺位数据，延迟添加标记（确保地图完全加载）
         if (shops.length > 0) {
           setTimeout(() => {
+            console.log('🔍 开始添加铺位标记到地图...');
             addShopMarkersToMap(map, shops);
           }, 500);
+        } else {
+          console.warn('⚠️ 没有铺位数据可显示');
         }
       });
 
       map.on('error', (e: any) => {
-        console.error('地图加载错误:', e);
-        setMapError('地图加载错误: ' + (e.message || '未知错误'));
+        console.error('❌ 地图加载错误:', e);
+        const errorDetail = e.message || e.error || '未知错误';
+        const fullErrorMsg = `地图加载错误: ${errorDetail}。如果使用IP访问，请确保在高德地图控制台添加了IP白名单`;
+        setMapError(fullErrorMsg);
+        message.error('地图加载失败，请检查API配置');
       });
 
     } catch (error) {
@@ -1761,23 +1768,34 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
     script.defer = true;
     
     script.onload = () => {
+      console.log('✅ 高德地图脚本加载成功');
       setTimeout(() => {
         if (window.AMap) {
+          console.log('✅ 高德地图API对象已就绪');
           // 如果有分析结果，初始化完整地图；否则初始化基础地图
           if (analysisResult?.schools && analysisResult.schools.length > 0) {
+            console.log('🔍 初始化完整地图（有分析结果）');
             initMap();
           } else if (cityName) {
+            console.log('🔍 初始化基础地图（城市:', cityName, ')');
             initBaseMap();
           }
+        } else {
+          console.error('❌ 高德地图API对象未找到');
+          setMapError('高德地图API对象未找到，可能是API Key配置问题，请检查高德地图控制台的域名/IP白名单设置');
         }
       }, 100);
     };
     
-    script.onerror = () => {
-      setMapError('高德地图脚本加载失败');
+    script.onerror = (error) => {
+      console.error('❌ 高德地图脚本加载失败:', error);
+      const errorMsg = '高德地图脚本加载失败。可能原因：1) 网络连接问题 2) API Key无效或域名/IP未在白名单中。请检查高德地图控制台的域名/IP白名单设置（需要添加当前访问的域名或IP地址）';
+      setMapError(errorMsg);
+      message.error('地图加载失败，请检查网络连接和API配置');
     };
     
     document.head.appendChild(script);
+    console.log('📥 正在加载高德地图脚本:', script.src);
   }, [initMap, initBaseMap, analysisResult, cityName]);
 
   // 监听分析结果变化，初始化地图并添加标注
@@ -2448,16 +2466,24 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
 
     console.log(`✅ 已添加 ${addedCount}/${shops.length} 个标记到地图`);
     
+    if (addedCount === 0) {
+      console.warn('⚠️ 没有成功添加任何标记，可能原因：1) 坐标数据无效 2) 地图未完全加载');
+    }
+    
     // 如果有标记，调整地图视野以显示所有标记
     if (addedCount > 0 && map && map.setFitView) {
       setTimeout(() => {
         try {
           const markers = map.getAllOverlays('marker') || [];
+          console.log('📊 地图上的标记总数:', markers.length);
           if (markers.length > 0) {
             map.setFitView(markers, false, [50, 50, 50, 50]); // 边距
+            console.log('✅ 地图视野已调整为显示所有标记');
+          } else {
+            console.warn('⚠️ 未找到任何标记，无法调整视野');
           }
         } catch (e) {
-          console.warn('调整地图视野失败:', e);
+          console.warn('❌ 调整地图视野失败:', e);
         }
       }, 500);
     }
@@ -2571,7 +2597,30 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
             </div>
           ) : (
             <>
-              <div ref={mapRef} style={{ width: '100%', height: '100%' }} />
+              {!mapLoaded && !mapError && (
+                <div style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  zIndex: 1000,
+                  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                  padding: '20px',
+                  borderRadius: '8px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)'
+                }}>
+                  <Spin size="large" tip="正在加载地图..." />
+                </div>
+              )}
+              <div 
+                ref={mapRef} 
+                style={{ 
+                  width: '100%', 
+                  height: '100%',
+                  minHeight: '600px',
+                  backgroundColor: '#f0f0f0'
+                }} 
+              />
               {/* 显示用户选中的铺位 */}
               {selectedShops.length > 0 && (
                 <div style={{
