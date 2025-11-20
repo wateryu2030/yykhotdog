@@ -14,12 +14,16 @@ const router = Router();
  */
 router.get('/schools-with-analysis/:city/:district?', async (req: Request, res: Response) => {
   try {
-    const { city, district } = req.params;
+    // URL解码中文参数（Express会自动解码，但确保安全）
+    let city = req.params.city ? decodeURIComponent(req.params.city) : '';
+    let district = req.params.district ? decodeURIComponent(req.params.district) : undefined;
     const { saveToDB, forceRefresh } = req.query;
     const shouldSaveToDB = saveToDB === 'true';
     const shouldForceRefresh = forceRefresh === 'true'; // 强制刷新：从高德地图重新获取数据
 
     logger.info(`获取学校数据并AI分析: ${city}${district ? '/' + district : ''} (forceRefresh: ${shouldForceRefresh})`);
+    logger.info(`原始参数: city=${req.params.city}, district=${req.params.district}`);
+    logger.info(`解码后参数: city=${city}, district=${district}`);
 
     // 0. 检查表是否存在，如果不存在则创建
     try {
