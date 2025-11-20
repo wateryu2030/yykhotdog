@@ -2523,12 +2523,14 @@ const SiteSelectionModel: React.FC<SiteSelectionModelProps> = ({
     }
   }, []);
 
-  // 城市地图模式：当城市名称变化时，加载铺位数据
+  // 城市地图模式：当城市名称或区县变化时，加载铺位数据
   useEffect(() => {
     if (showCityMapOnly && cityName && cityName !== '未知城市') {
+      const district = selectedRegionNames.length >= 3 ? selectedRegionNames[2] : '';
+      console.log('🔄 城市或区县变化，重新加载铺位数据:', { cityName, district });
       loadShopsForCity();
     }
-  }, [showCityMapOnly, cityName, loadShopsForCity]);
+  }, [showCityMapOnly, cityName, selectedRegionNames.length, loadShopsForCity]);
 
   // 城市地图模式：初始化地图并添加铺位标记
   useEffect(() => {
