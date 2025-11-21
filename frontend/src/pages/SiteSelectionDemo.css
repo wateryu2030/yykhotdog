@@ -1,0 +1,63 @@
+.site-selection-demo {
+  padding: 16px;
+  background: #f0f2f5;
+  min-height: 100vh;
+}
+
+.demo-header {
+  margin-bottom: 16px;
+  padding: 16px 24px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.demo-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: #1890ff;
+}
+
+.demo-header .subtitle {
+  margin: 8px 0 0 0;
+  color: #666;
+  font-size: 14px;
+}
+
+.filter-panel .ant-card-body {
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+
+.map-panel .ant-card-body {
+  padding: 16px;
+}
+
+.detail-panel .ant-card-body {
+  padding: 16px;
+}
+
+/* 滚动条样式 */
+.filter-panel .ant-card-body::-webkit-scrollbar,
+.detail-panel .ant-card-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.filter-panel .ant-card-body::-webkit-scrollbar-track,
+.detail-panel .ant-card-body::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.filter-panel .ant-card-body::-webkit-scrollbar-thumb,
+.detail-panel .ant-card-body::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 3px;
+}
+
+.filter-panel .ant-card-body::-webkit-scrollbar-thumb:hover,
+.detail-panel .ant-card-body::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+

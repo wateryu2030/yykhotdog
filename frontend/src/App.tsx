@@ -11,7 +11,6 @@ import CityProfile from './pages/CityProfile';
 import Operations from './pages/Operations';
 import Allocation from './pages/Allocation';
 import SiteSelection from './pages/SiteSelection';
-import NewSiteSelection from './pages/NewSiteSelection';
 import StoreOpening from './pages/StoreOpening';
 import Login from './pages/Login';
 import SalesComparison from './pages/SalesComparison';
@@ -23,7 +22,6 @@ import IntelligentRecommendations from './components/IntelligentRecommendations'
 import SystemManagement from './components/SystemManagement';
 import AITestPage from './pages/AITestPage';
 import CandidateLocations from './pages/CandidateLocations';
-import BatchAnalysis from './pages/BatchAnalysis';
 import SiteSelectionDemo from './pages/SiteSelectionDemo';
 import APITest from './pages/APITest';
 import GISMapView from './pages/GISMapView';
@@ -44,7 +42,6 @@ const App: React.FC = () => {
             <Route path="operations" element={<Operations />} />
             <Route path="allocation" element={<Allocation />} />
             <Route path="site-selection" element={<SiteSelection />} />
-            <Route path="new-site-selection" element={<NewSiteSelection />} />
             <Route path="store-opening" element={<StoreOpening />} />
             <Route path="sales-comparison" element={<SalesComparison />} />
             <Route path="etl-management" element={<ETLManagement />} />
@@ -55,7 +52,6 @@ const App: React.FC = () => {
             <Route path="system-management" element={<SystemManagement />} />
             <Route path="ai-test" element={<AITestPage />} />
             <Route path="candidate-locations" element={<CandidateLocations />} />
-            <Route path="batch-analysis" element={<BatchAnalysis />} />
             <Route path="site-selection-demo" element={<SiteSelectionDemo />} />
             <Route path="api-test" element={<APITest />} />
             <Route path="gis-map" element={<GISMapView />} />

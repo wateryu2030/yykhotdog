@@ -1,5 +1,31 @@
 #!/usr/bin/env node
 
+// 确保从 backend 目录加载依赖
+const path = require('path');
+const Module = require('module');
+
+// 将 backend/node_modules 添加到模块搜索路径
+const backendPath = path.join(__dirname, 'backend');
+const backendNodeModules = path.join(backendPath, 'node_modules');
+
+// 修改模块解析路径
+const originalResolveFilename = Module._resolveFilename;
+Module._resolveFilename = function(request, parent, isMain, options) {
+  try {
+    return originalResolveFilename.call(this, request, parent, isMain, options);
+  } catch (e) {
+    if (e.code === 'MODULE_NOT_FOUND' && !request.startsWith('.') && !path.isAbsolute(request)) {
+      try {
+        const backendModulePath = path.join(backendNodeModules, request);
+        return originalResolveFilename.call(this, backendModulePath, parent, isMain, options);
+      } catch (e2) {
+        throw e;
+      }
+    }
+    throw e;
+  }
+};
+
 const sql = require('mssql');
 const fs = require('fs');
 
@@ -26,6 +52,127 @@ const cargoConfig = {
     }
 };
 
+function isValidLngLat(longitude, latitude) {
+    return typeof longitude === 'number' &&
+        typeof latitude === 'number' &&
+        !isNaN(longitude) &&
+        !isNaN(latitude) &&
+        longitude >= -180 && longitude <= 180 &&
+        latitude >= -90 && latitude <= 90;
+}
+
+function finalizeCoordinates(longitude, latitude) {
+    if (!isValidLngLat(longitude, latitude)) {
+        if (isValidLngLat(latitude, longitude)) {
+            return { longitude: latitude, latitude: longitude };
+        }
+        return { longitude: null, latitude: null };
+    }
+    return { longitude, latitude };
+}
+
+function parseCoordinates(location) {
+    if (!location || typeof location !== 'string') {
+        return { longitude: null, latitude: null };
+    }
+
+    let text = location.trim();
+    if (!text) {
+        return { longitude: null, latitude: null };
+    }
+
+    text = text
+        .replace(/POINT\s*\(/i, '')
+        .replace(/\)/g, '')
+        .replace(/；|;|、|\|/g, ',')
+        .replace(/：/g, ':')
+        .replace(/\s+/g, ' ');
+
+    const lngMatch = text.match(/(?:lon|lng|经度)\s*[:：]?\s*(-?\d+\.?\d*)/i);
+    const latMatch = text.match(/(?:lat|纬度)\s*[:：]?\s*(-?\d+\.?\d*)/i);
+
+    if (lngMatch && latMatch) {
+        const longitude = parseFloat(lngMatch[1]);
+        const latitude = parseFloat(latMatch[1]);
+        if (!isNaN(longitude) && !isNaN(latitude)) {
+            return finalizeCoordinates(longitude, latitude);
+        }
+    }
+
+    const numberMatches = text.match(/-?\d+\.?\d*/g);
+    if (!numberMatches || numberMatches.length < 2) {
+        return { longitude: null, latitude: null };
+    }
+
+    let first = parseFloat(numberMatches[0]);
+    let second = parseFloat(numberMatches[1]);
+
+    if (isNaN(first) || isNaN(second)) {
+        return { longitude: null, latitude: null };
+    }
+
+    // 如果第一段文本包含“lat/纬”，则说明先出现纬度
+    const lowerText = text.toLowerCase();
+    const firstIndex = lowerText.indexOf(numberMatches[0]);
+    if (firstIndex > -1) {
+        const beforeFirst = lowerText.slice(0, firstIndex);
+        const latFirst = /lat|纬/.test(beforeFirst) && !/lon|lng|经/.test(beforeFirst);
+        if (latFirst) {
+            return finalizeCoordinates(second, first);
+        }
+    }
+
+    return finalizeCoordinates(first, second);
+}
+
+async function recalculateCoordinates(mainConn) {
+    console.log('\n🔄 正在校验并纠正 candidate_locations 表中的经纬度...');
+    const updateResult = await mainConn.request().query(`
+        SELECT id, location, longitude, latitude
+        FROM hotdog2030.dbo.candidate_locations
+        WHERE location IS NOT NULL
+          AND LTRIM(RTRIM(location)) <> ''
+    `);
+
+    if (updateResult.recordset.length === 0) {
+        console.log('⚠️ 没有可用于校验的记录');
+        return;
+    }
+
+    let updated = 0;
+    for (const row of updateResult.recordset) {
+        const parsed = parseCoordinates(row.location);
+        if (parsed.longitude === null || parsed.latitude === null) {
+            continue;
+        }
+
+        const currentValid = isValidLngLat(row.longitude, row.latitude);
+        const needUpdate =
+            !currentValid ||
+            row.longitude === null ||
+            row.latitude === null ||
+            Math.abs(row.longitude - parsed.longitude) > 0.000001 ||
+            Math.abs(row.latitude - parsed.latitude) > 0.000001;
+
+        if (needUpdate) {
+            await mainConn.request()
+                .input('id', sql.BigInt, row.id)
+                .input('longitude', sql.Decimal(10, 7), parsed.longitude)
+                .input('latitude', sql.Decimal(10, 7), parsed.latitude)
+                .query(`
+                    UPDATE hotdog2030.dbo.candidate_locations
+                    SET longitude = @longitude,
+                        latitude = @latitude,
+                        updated_at = GETDATE()
+                    WHERE id = @id
+                `);
+            updated++;
+        }
+    }
+
+    console.log(`✅ 已纠正 ${updated} 条记录的经纬度`);
+}
+
 async function syncCandidateLocations() {
     let cargoConn, mainConn;
     
@@ -40,6 +187,10 @@ async function syncCandidateLocations() {
         mainConn = await sql.connect(config);
         console.log('✅ hotdog2030数据库连接成功');
 
+        console.log('🧹 清空 hotdog2030.dbo.candidate_locations 表...');
+        await mainConn.request().query('TRUNCATE TABLE hotdog2030.dbo.candidate_locations;');
+        console.log('✅ 已清空 candidate_locations 表');
+
         // 查询cyrgweixin中的意向铺位数据
         console.log('📋 查询cyrgweixin.Rg_SeekShop数据...');
         const result = await cargoConn.request().query(`
@@ -53,7 +204,7 @@ async function syncCandidateLocations() {
                 approvalState,
                 approvalRemarks,
                 amount
-            FROM Rg_SeekShop 
+            FROM cyrgweixin.dbo.Rg_SeekShop 
             WHERE Delflag = 0 
             ORDER BY Id
         `);
@@ -82,6 +233,7 @@ async function syncCandidateLocations() {
                 // 解析地址信息
                 const address = row.ShopAddress || '';
                 const location = row.location || '';
+                const { longitude, latitude } = parseCoordinates(location);
                 
                 // 简单的地址解析（实际项目中可能需要更复杂的解析）
                 let province = '未知';
@@ -129,15 +281,19 @@ async function syncCandidateLocations() {
                     .input('approval_remarks', sql.NVarChar(1000), row.approvalRemarks || '')
                     .input('record_time', sql.NVarChar(255), row.RecordTime || '')
                     .input('status', sql.VarChar(20), 'pending')
+                    .input('longitude', sql.Decimal(10, 7), longitude)
+                    .input('latitude', sql.Decimal(10, 7), latitude)
                     .query(`
-                        INSERT INTO candidate_locations (
+                        INSERT INTO hotdog2030.dbo.candidate_locations (
                             shop_name, shop_address, location, description,
                             province, city, district, rent_amount,
-                            approval_state, approval_remarks, record_time, status
+                            approval_state, approval_remarks, record_time, status,
+                            longitude, latitude
                         ) VALUES (
                             @shop_name, @shop_address, @location, @description,
                             @province, @city, @district, @rent_amount,
-                            @approval_state, @approval_remarks, @record_time, @status
+                            @approval_state, @approval_remarks, @record_time, @status,
+                            @longitude, @latitude
                         )
                     `);
                 
@@ -157,6 +313,8 @@ async function syncCandidateLocations() {
         console.log(`✅ 成功: ${successCount} 条`);
         console.log(`❌ 失败: ${errorCount} 条`);
         console.log(`📊 总计: ${result.recordset.length} 条`);
+
+        await recalculateCoordinates(mainConn);
         
         // 更新同步状态
         await mainConn.request()
@@ -165,7 +323,7 @@ async function syncCandidateLocations() {
             .input('sync_status', sql.VarChar(20), 'success')
             .input('records_count', sql.Int, successCount)
             .query(`
-                INSERT INTO data_sync_status (table_name, source_database, last_sync_time, sync_status, records_count)
+                INSERT INTO hotdog2030.dbo.data_sync_status (table_name, source_database, last_sync_time, sync_status, records_count)
                 VALUES (@table_name, @source_database, GETDATE(), @sync_status, @records_count)
             `);
         
@@ -183,7 +341,7 @@ async function syncCandidateLocations() {
                     .input('sync_status', sql.VarChar(20), 'failed')
                     .input('error_message', sql.NVarChar(MAX), error.message)
                     .query(`
-                        INSERT INTO data_sync_status (table_name, source_database, last_sync_time, sync_status, error_message)
+                        INSERT INTO hotdog2030.dbo.data_sync_status (table_name, source_database, last_sync_time, sync_status, error_message)
                         VALUES (@table_name, @source_database, GETDATE(), @sync_status, @error_message)
                     `);
             }

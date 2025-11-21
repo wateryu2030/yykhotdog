@@ -37,19 +37,9 @@ const Layout: React.FC = () => {
       label: '选店模块',
     },
     {
-      key: '/new-site-selection',
-      icon: <EnvironmentOutlined />,
-      label: '智能选店',
-    },
-    {
       key: '/candidate-locations',
       icon: <EnvironmentOutlined />,
       label: '意向铺位管理',
-    },
-    {
-      key: '/batch-analysis',
-      icon: <BarChartOutlined />,
-      label: '批量选址分析',
     },
     {
       key: '/site-selection-demo',

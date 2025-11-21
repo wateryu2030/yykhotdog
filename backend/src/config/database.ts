@@ -18,6 +18,7 @@ console.log('CARGO_DB_HOST:', process.env.CARGO_DB_HOST);
 
 let sequelize: Sequelize;
 let cyrg2025Sequelize: Sequelize;
+let cyrgweixinSequelize: Sequelize;
 
 if (useSQLite) {
   // 使用SQLite配置
@@ -36,6 +37,7 @@ if (useSQLite) {
   });
 
   cyrg2025Sequelize = sequelize; // SQLite模式下使用同一个连接
+  cyrgweixinSequelize = sequelize; // SQLite模式下使用同一个连接
 } else {
   // 使用MSSQL配置
   const dbConfig = {
@@ -86,6 +88,30 @@ if (useSQLite) {
     },
   };
 
+  const cyrgweixinDbConfig = {
+    host: process.env.CARGO_DB_HOST || 'localhost',
+    port: parseInt(process.env.CARGO_DB_PORT || '1433'),
+    username: process.env.CARGO_DB_USER || 'sa',
+    password: process.env.CARGO_DB_PASSWORD || '',
+    database: 'cyrgweixin',
+    dialect: 'mssql' as const,
+    logging: process.env.LOG_LEVEL === 'debug' ? console.log : false,
+    dialectOptions: {
+      encrypt: false,
+      trustServerCertificate: true,
+    },
+    timezone: '+08:00',
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000,
+      idle: 10000,
+    },
+    retry: {
+      max: 3,
+    },
+  };
+
   sequelize = new Sequelize(dbConfig.database, dbConfig.username, dbConfig.password, {
     host: dbConfig.host,
     port: dbConfig.port,
@@ -114,9 +140,26 @@ if (useSQLite) {
       retry: cyrg2025DbConfig.retry,
     }
   );
+
+  cyrgweixinSequelize = new Sequelize(
+    cyrgweixinDbConfig.database,
+    cyrgweixinDbConfig.username,
+    cyrgweixinDbConfig.password,
+    {
+      host: cyrgweixinDbConfig.host,
+      port: cyrgweixinDbConfig.port,
+      database: cyrgweixinDbConfig.database,
+      dialect: cyrgweixinDbConfig.dialect,
+      logging: cyrgweixinDbConfig.logging,
+      dialectOptions: cyrgweixinDbConfig.dialectOptions,
+      timezone: cyrgweixinDbConfig.timezone,
+      pool: cyrgweixinDbConfig.pool,
+      retry: cyrgweixinDbConfig.retry,
+    }
+  );
 }
 
-export { sequelize, cyrg2025Sequelize };
+export { sequelize, cyrg2025Sequelize, cyrgweixinSequelize };
 
 // 数据库连接函数
 export async function connectDatabase() {
@@ -132,6 +175,13 @@ export async function connectDatabase() {
 
       await cyrg2025Sequelize.authenticate();
       logger.info('货物数据库连接成功');
+
+      try {
+        await cyrgweixinSequelize.authenticate();
+        logger.info('cyrgweixin数据库连接成功');
+      } catch (weixinError) {
+        logger.warn('cyrgweixin数据库连接失败（可选）:', weixinError);
+      }
     }
   } catch (error) {
     logger.error('数据库连接失败:', error);

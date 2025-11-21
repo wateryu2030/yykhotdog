@@ -1,5 +1,31 @@
 #!/usr/bin/env node
 
+// 确保从 backend 目录加载依赖
+const path = require('path');
+const Module = require('module');
+
+// 将 backend/node_modules 添加到模块搜索路径
+const backendPath = path.join(__dirname, 'backend');
+const backendNodeModules = path.join(backendPath, 'node_modules');
+
+// 修改模块解析路径
+const originalResolveFilename = Module._resolveFilename;
+Module._resolveFilename = function(request, parent, isMain, options) {
+  try {
+    return originalResolveFilename.call(this, request, parent, isMain, options);
+  } catch (e) {
+    if (e.code === 'MODULE_NOT_FOUND' && !request.startsWith('.') && !path.isAbsolute(request)) {
+      try {
+        const backendModulePath = path.join(backendNodeModules, request);
+        return originalResolveFilename.call(this, backendModulePath, parent, isMain, options);
+      } catch (e2) {
+        throw e;
+      }
+    }
+    throw e;
+  }
+};
+
 const sql = require('mssql');
 const fs = require('fs');
 
